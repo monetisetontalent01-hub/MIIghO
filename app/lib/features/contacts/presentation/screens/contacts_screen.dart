@@ -30,9 +30,13 @@ class _ContactsScreenState extends State<ContactsScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final isDark = theme.brightness == Brightness.dark;
+
     return Scaffold(
+      backgroundColor: isDark ? MiighoColors.canvas : MiighoColors.lightCanvas,
       appBar: AppBar(
-        title: const Text('Contacts'),
+        title: const Text('Contacts MÏÏghO'),
         actions: [
           IconButton(
             icon: const Icon(Icons.sync_rounded),
@@ -59,7 +63,7 @@ class _ContactsScreenState extends State<ContactsScreen> {
               },
               decoration: InputDecoration(
                 hintText: 'Rechercher un contact ou numéro...',
-                prefixIcon: const Icon(Icons.search_rounded, color: Colors.grey),
+                prefixIcon: Icon(Icons.search_rounded, color: isDark ? MiighoColors.textSecondary : MiighoColors.lightTextSecondary),
                 suffixIcon: _searchController.text.isNotEmpty
                     ? IconButton(
                         icon: const Icon(Icons.clear_rounded),
@@ -70,11 +74,11 @@ class _ContactsScreenState extends State<ContactsScreen> {
                       )
                     : null,
                 filled: true,
-                fillColor: const Color(0x0D000000),
+                fillColor: isDark ? MiighoColors.surface1 : MiighoColors.lightSurface2,
                 contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
                 border: OutlineInputBorder(
                   borderRadius: BorderRadius.circular(12),
-                  borderSide: BorderSide.none,
+                  borderSide: BorderSide(color: isDark ? MiighoColors.borderSubtle : MiighoColors.lightBorderSubtle),
                 ),
               ),
             ),
@@ -113,9 +117,9 @@ class _ContactsScreenState extends State<ContactsScreen> {
                     }
                     return ListView.separated(
                       itemCount: state.searchResults.length,
-                      separatorBuilder: (_, __) => const Divider(height: 1, indent: 72),
+                      separatorBuilder: (_, __) => Divider(height: 1, indent: 72, color: isDark ? MiighoColors.borderSubtle : MiighoColors.lightBorderSubtle),
                       itemBuilder: (context, index) {
-                        return _buildContactTile(context, state.searchResults[index]);
+                        return _buildContactTile(context, state.searchResults[index], isDark);
                       },
                     );
                   }
@@ -128,21 +132,24 @@ class _ContactsScreenState extends State<ContactsScreen> {
                       children: [
                         if (state.favorites.isNotEmpty) ...[
                           _buildSectionHeader('FAVORIS (${state.favorites.length})'),
-                          ...state.favorites.map((c) => _buildContactTile(context, c)),
-                          const Divider(height: 16, thickness: 4, color: Color(0x0A000000)),
+                          ...state.favorites.map((c) => _buildContactTile(context, c, isDark)),
+                          Divider(height: 16, thickness: 1, color: isDark ? MiighoColors.borderSubtle : MiighoColors.lightBorderSubtle),
                         ],
                         _buildSectionHeader('SUR MÏÏghO (${state.miighoContacts.length})'),
                         if (state.miighoContacts.isEmpty)
-                          const Padding(
-                            padding: EdgeInsets.all(16.0),
-                            child: Text('Aucun contact MÏÏghO synchronisé', style: TextStyle(color: Colors.grey)),
+                          Padding(
+                            padding: const EdgeInsets.all(16.0),
+                            child: Text(
+                              'Aucun contact MÏÏghO synchronisé',
+                              style: TextStyle(color: isDark ? MiighoColors.textMuted : MiighoColors.lightTextMuted),
+                            ),
                           )
                         else
-                          ...state.miighoContacts.map((c) => _buildContactTile(context, c)),
+                          ...state.miighoContacts.map((c) => _buildContactTile(context, c, isDark)),
                         if (state.nonMiighoContacts.isNotEmpty) ...[
-                          const Divider(height: 16, thickness: 4, color: Color(0x0A000000)),
+                          Divider(height: 16, thickness: 1, color: isDark ? MiighoColors.borderSubtle : MiighoColors.lightBorderSubtle),
                           _buildSectionHeader('INVITER SUR MÏÏghO (${state.nonMiighoContacts.length})'),
-                          ...state.nonMiighoContacts.map((c) => _buildInviteTile(context, c)),
+                          ...state.nonMiighoContacts.map((c) => _buildInviteTile(context, c, isDark)),
                         ],
                       ],
                     ),
@@ -155,19 +162,6 @@ class _ContactsScreenState extends State<ContactsScreen> {
           ),
         ],
       ),
-      bottomNavigationBar: BottomNavigationBar(
-        currentIndex: 1,
-        selectedItemColor: MiighoColors.primary,
-        items: const [
-          BottomNavigationBarItem(icon: Icon(Icons.chat_rounded), label: 'Discussions'),
-          BottomNavigationBarItem(icon: Icon(Icons.people_alt_rounded), label: 'Contacts'),
-          BottomNavigationBarItem(icon: Icon(Icons.settings_rounded), label: 'Paramètres'),
-        ],
-        onTap: (index) {
-          if (index == 0) context.go('/conversations');
-          if (index == 2) context.go('/settings');
-        },
-      ),
     );
   }
 
@@ -177,8 +171,8 @@ class _ContactsScreenState extends State<ContactsScreen> {
       child: Text(
         title,
         style: const TextStyle(
-          fontSize: 12,
-          fontWeight: FontWeight.w700,
+          fontSize: 11,
+          fontWeight: FontWeight.w800,
           color: MiighoColors.primary,
           letterSpacing: 0.8,
         ),
@@ -186,7 +180,7 @@ class _ContactsScreenState extends State<ContactsScreen> {
     );
   }
 
-  Widget _buildContactTile(BuildContext context, Contact contact) {
+  Widget _buildContactTile(BuildContext context, Contact contact, bool isDark) {
     return ListTile(
       leading: MiighoAvatar(
         name: contact.displayName,
@@ -199,7 +193,11 @@ class _ContactsScreenState extends State<ContactsScreen> {
           Expanded(
             child: Text(
               contact.displayName,
-              style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 15),
+              style: TextStyle(
+                fontWeight: FontWeight.w600,
+                fontSize: 15,
+                color: isDark ? MiighoColors.textPrimary : MiighoColors.lightTextPrimary,
+              ),
             ),
           ),
           if (contact.isFavorite)
@@ -210,18 +208,13 @@ class _ContactsScreenState extends State<ContactsScreen> {
         contact.statusMessage ?? contact.phoneNumber,
         maxLines: 1,
         overflow: TextOverflow.ellipsis,
-        style: const TextStyle(fontSize: 13, color: Colors.grey),
+        style: TextStyle(fontSize: 13, color: isDark ? MiighoColors.textSecondary : MiighoColors.lightTextSecondary),
       ),
-      trailing: Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          IconButton(
-            icon: const Icon(Icons.chat_bubble_outline_rounded, color: MiighoColors.primary),
-            onPressed: () {
-              context.push('/conversations/${contact.id}');
-            },
-          ),
-        ],
+      trailing: IconButton(
+        icon: const Icon(Icons.chat_bubble_outline_rounded, color: MiighoColors.primary),
+        onPressed: () {
+          context.push('/conversations/${contact.id}');
+        },
       ),
       onTap: () {
         context.push('/conversations/${contact.id}');
@@ -229,14 +222,23 @@ class _ContactsScreenState extends State<ContactsScreen> {
     );
   }
 
-  Widget _buildInviteTile(BuildContext context, Contact contact) {
+  Widget _buildInviteTile(BuildContext context, Contact contact, bool isDark) {
     return ListTile(
       leading: MiighoAvatar(
         name: contact.displayName,
-        backgroundColor: Colors.grey.shade400,
+        backgroundColor: Colors.grey.shade600,
       ),
-      title: Text(contact.displayName, style: const TextStyle(fontWeight: FontWeight.w500)),
-      subtitle: Text(contact.phoneNumber, style: const TextStyle(fontSize: 12, color: Colors.grey)),
+      title: Text(
+        contact.displayName,
+        style: TextStyle(
+          fontWeight: FontWeight.w500,
+          color: isDark ? MiighoColors.textPrimary : MiighoColors.lightTextPrimary,
+        ),
+      ),
+      subtitle: Text(
+        contact.phoneNumber,
+        style: TextStyle(fontSize: 12, color: isDark ? MiighoColors.textMuted : MiighoColors.lightTextMuted),
+      ),
       trailing: OutlinedButton(
         style: OutlinedButton.styleFrom(
           foregroundColor: MiighoColors.primary,

@@ -2,7 +2,7 @@ import 'dart:async';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import '../../data/chat_repository.dart';
 import '../../models/chat_models.dart';
-import '../../presentation/widgets/message_bubble.dart' show MessageBubbleType;
+import '../../presentation/widgets/message_bubble.dart' show MessageBubbleType, MessageReactionData;
 import '../../../shared/widgets/conversation_tile.dart' show MessageDeliveryStatus;
 
 // Events
@@ -18,14 +18,25 @@ class LoadMessages extends ChatEvent {
 class SendTextMessage extends ChatEvent {
   final String conversationId;
   final String content;
-  SendTextMessage({required this.conversationId, required this.content});
+  final String? replyToId;
+  SendTextMessage({
+    required this.conversationId,
+    required this.content,
+    this.replyToId,
+  });
 }
 
 class SendVoiceMessage extends ChatEvent {
   final String conversationId;
   final String audioPath;
   final Duration duration;
-  SendVoiceMessage({required this.conversationId, required this.audioPath, required this.duration});
+  final String? replyToId;
+  SendVoiceMessage({
+    required this.conversationId,
+    required this.audioPath,
+    required this.duration,
+    this.replyToId,
+  });
 }
 
 class SendMediaMessage extends ChatEvent {
@@ -33,11 +44,45 @@ class SendMediaMessage extends ChatEvent {
   final String filePath;
   final String mediaType;
   final String? caption;
+  final String? replyToId;
   SendMediaMessage({
     required this.conversationId,
     required this.filePath,
     required this.mediaType,
     this.caption,
+    this.replyToId,
+  });
+}
+
+class CreateConversationEvent extends ChatEvent {
+  final String title;
+  final bool isGroup;
+  final String? initialMessage;
+  CreateConversationEvent({
+    required this.title,
+    required this.isGroup,
+    this.initialMessage,
+  });
+}
+
+class TogglePinConversationEvent extends ChatEvent {
+  final String conversationId;
+  TogglePinConversationEvent(this.conversationId);
+}
+
+class ToggleMuteConversationEvent extends ChatEvent {
+  final String conversationId;
+  ToggleMuteConversationEvent(this.conversationId);
+}
+
+class AddReactionEvent extends ChatEvent {
+  final String conversationId;
+  final String messageId;
+  final String emoji;
+  AddReactionEvent({
+    required this.conversationId,
+    required this.messageId,
+    required this.emoji,
   });
 }
 
@@ -55,7 +100,19 @@ class ChatLoading extends ChatState {}
 
 class ConversationsLoaded extends ChatState {
   final List<MiighoConversation> conversations;
-  ConversationsLoaded(this.conversations);
+  final String? activeConversationId;
+
+  ConversationsLoaded(this.conversations, {this.activeConversationId});
+
+  ConversationsLoaded copyWith({
+    List<MiighoConversation>? conversations,
+    String? activeConversationId,
+  }) {
+    return ConversationsLoaded(
+      conversations ?? this.conversations,
+      activeConversationId: activeConversationId ?? this.activeConversationId,
+    );
+  }
 }
 
 class MessagesLoaded extends ChatState {
@@ -83,6 +140,7 @@ class ChatError extends ChatState {
 class ChatBloc extends Bloc<ChatEvent, ChatState> {
   final ChatRepository chatRepository;
   StreamSubscription? _wsSubscription;
+  List<MiighoConversation> _allConversations = [];
 
   ChatBloc({required this.chatRepository}) : super(ChatInitial()) {
     on<LoadConversations>(_onLoadConversations);
@@ -90,6 +148,10 @@ class ChatBloc extends Bloc<ChatEvent, ChatState> {
     on<SendTextMessage>(_onSendTextMessage);
     on<SendVoiceMessage>(_onSendVoiceMessage);
     on<SendMediaMessage>(_onSendMediaMessage);
+    on<CreateConversationEvent>(_onCreateConversation);
+    on<TogglePinConversationEvent>(_onTogglePinConversation);
+    on<ToggleMuteConversationEvent>(_onToggleMuteConversation);
+    on<AddReactionEvent>(_onAddReaction);
     on<MessageReceivedEvent>(_onMessageReceived);
 
     _wsSubscription = chatRepository.wsClient.messages.listen((msg) {
@@ -101,7 +163,8 @@ class ChatBloc extends Bloc<ChatEvent, ChatState> {
     emit(ChatLoading());
     try {
       final conversations = await chatRepository.getConversations();
-      emit(ConversationsLoaded(conversations));
+      _allConversations = List.from(conversations);
+      emit(ConversationsLoaded(_allConversations));
     } catch (e) {
       emit(ChatError(e.toString()));
     }
@@ -131,6 +194,18 @@ class ChatBloc extends Bloc<ChatEvent, ChatState> {
 
     if (currentState is MessagesLoaded && currentState.conversationId == event.conversationId) {
       emit(currentState.copyWith(messages: [newMessage, ...currentState.messages]));
+    }
+
+    // Update conversation subtitle in conversation list
+    final idx = _allConversations.indexWhere((c) => c.id == event.conversationId);
+    if (idx != -1) {
+      final updated = _allConversations[idx].copyWith(
+        subtitle: event.content,
+        updatedAt: DateTime.now(),
+        isLastMessageFromMe: true,
+        lastMessageStatus: MessageDeliveryStatus.sent,
+      );
+      _allConversations[idx] = updated;
     }
 
     await chatRepository.sendMessage(
@@ -194,6 +269,68 @@ class ChatBloc extends Bloc<ChatEvent, ChatState> {
       type: type,
       mediaPath: event.filePath,
     );
+  }
+
+  void _onCreateConversation(CreateConversationEvent event, Emitter<ChatState> emit) {
+    final newConv = MiighoConversation(
+      id: 'conv_${DateTime.now().millisecondsSinceEpoch}',
+      title: event.title,
+      subtitle: event.initialMessage ?? 'Nouvelle discussion créée',
+      updatedAt: DateTime.now(),
+      isGroup: event.isGroup,
+      unreadCount: 0,
+      isOnline: true,
+    );
+    _allConversations.insert(0, newConv);
+    emit(ConversationsLoaded(List.from(_allConversations)));
+  }
+
+  void _onTogglePinConversation(TogglePinConversationEvent event, Emitter<ChatState> emit) {
+    final idx = _allConversations.indexWhere((c) => c.id == event.conversationId);
+    if (idx != -1) {
+      final item = _allConversations[idx];
+      _allConversations[idx] = item.copyWith(isPinned: !item.isPinned);
+      // Sort pinned to top
+      _allConversations.sort((a, b) {
+        if (a.isPinned && !b.isPinned) return -1;
+        if (!a.isPinned && b.isPinned) return 1;
+        return b.updatedAt.compareTo(a.updatedAt);
+      });
+      emit(ConversationsLoaded(List.from(_allConversations)));
+    }
+  }
+
+  void _onToggleMuteConversation(ToggleMuteConversationEvent event, Emitter<ChatState> emit) {
+    final idx = _allConversations.indexWhere((c) => c.id == event.conversationId);
+    if (idx != -1) {
+      final item = _allConversations[idx];
+      _allConversations[idx] = item.copyWith(isMuted: !item.isMuted);
+      emit(ConversationsLoaded(List.from(_allConversations)));
+    }
+  }
+
+  void _onAddReaction(AddReactionEvent event, Emitter<ChatState> emit) {
+    final currentState = state;
+    if (currentState is MessagesLoaded && currentState.conversationId == event.conversationId) {
+      final updatedMessages = currentState.messages.map((m) {
+        if (m.id == event.messageId) {
+          final existing = List<MessageReactionData>.from(m.reactions);
+          final rIdx = existing.indexWhere((r) => r.emoji == event.emoji);
+          if (rIdx != -1) {
+            existing[rIdx] = MessageReactionData(
+              emoji: event.emoji,
+              count: existing[rIdx].count + 1,
+              hasReacted: true,
+            );
+          } else {
+            existing.add(MessageReactionData(emoji: event.emoji, count: 1, hasReacted: true));
+          }
+          return m.copyWith(reactions: existing);
+        }
+        return m;
+      }).toList();
+      emit(currentState.copyWith(messages: updatedMessages));
+    }
   }
 
   void _onMessageReceived(MessageReceivedEvent event, Emitter<ChatState> emit) {

@@ -6,11 +6,18 @@ import '../../../../shared/widgets/miigho_avatar.dart';
 import '../../models/chat_models.dart';
 import '../bloc/chat_bloc.dart';
 import '../widgets/chat_input.dart';
+import '../widgets/contact_info_drawer.dart';
 import '../widgets/message_bubble.dart';
 
 class ChatScreen extends StatefulWidget {
   final String conversationId;
-  const ChatScreen({super.key, required this.conversationId});
+  final bool isEmbedded;
+
+  const ChatScreen({
+    super.key,
+    required this.conversationId,
+    this.isEmbedded = false,
+  });
 
   @override
   State<ChatScreen> createState() => _ChatScreenState();
@@ -18,11 +25,20 @@ class ChatScreen extends StatefulWidget {
 
 class _ChatScreenState extends State<ChatScreen> {
   MessageReplyData? _replyData;
+  bool _showContactInfo = false;
 
   @override
   void initState() {
     super.initState();
     context.read<ChatBloc>().add(LoadMessages(widget.conversationId));
+  }
+
+  @override
+  void didUpdateWidget(covariant ChatScreen oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.conversationId != widget.conversationId) {
+      context.read<ChatBloc>().add(LoadMessages(widget.conversationId));
+    }
   }
 
   void _handleSendMessage(String text, {String? replyToId}) {
@@ -78,66 +94,162 @@ class _ChatScreenState extends State<ChatScreen> {
     });
   }
 
+  String _getContactName() {
+    switch (widget.conversationId) {
+      case 'conv_0':
+        return 'Amina Diallo';
+      case 'conv_1':
+        return 'Équipe MÏÏghO Core';
+      case 'conv_2':
+        return 'Kofi Mensah';
+      default:
+        return 'Contact MÏÏghO';
+    }
+  }
+
+  bool _isGroup() {
+    return widget.conversationId == 'conv_1';
+  }
+
+  void _showEmojiReactionPicker(String messageId) {
+    final emojis = ['👍', '❤️', '🔥', '👏', '😂', '🎉'];
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: Colors.transparent,
+      builder: (ctx) {
+        final isDark = Theme.of(context).brightness == Brightness.dark;
+        return Container(
+          padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
+          margin: const EdgeInsets.all(16),
+          decoration: BoxDecoration(
+            color: isDark ? MiighoColors.surface2 : MiighoColors.lightSurface1,
+            borderRadius: BorderRadius.circular(30),
+            border: Border.all(
+              color: isDark ? MiighoColors.borderSubtle : MiighoColors.lightBorderSubtle,
+            ),
+          ),
+          child: Row(
+            mainAxisAlignment: MainAxisAlignment.spaceAround,
+            children: emojis.map((emoji) {
+              return InkWell(
+                onTap: () {
+                  Navigator.of(ctx).pop();
+                  context.read<ChatBloc>().add(
+                        AddReactionEvent(
+                          conversationId: widget.conversationId,
+                          messageId: messageId,
+                          emoji: emoji,
+                        ),
+                      );
+                },
+                child: Text(emoji, style: const TextStyle(fontSize: 28)),
+              );
+            }).toList(),
+          ),
+        );
+      },
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final isDark = theme.brightness == Brightness.dark;
+    final contactName = _getContactName();
+    final isGroup = _isGroup();
 
-    return Scaffold(
+    Widget chatContent = Scaffold(
+      backgroundColor: isDark ? MiighoColors.canvas : MiighoColors.lightCanvas,
       appBar: AppBar(
         titleSpacing: 0,
-        title: Row(
-          children: [
-            MiighoAvatar(
-              name: 'Contact ${widget.conversationId}',
-              size: MiighoAvatarSize.sm,
-              isOnline: true,
-              showPresenceIndicator: true,
-            ),
-            const SizedBox(width: 10),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    'Contact ${widget.conversationId}',
-                    style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w600),
-                  ),
-                  const Text(
-                    'En ligne',
-                    style: TextStyle(
-                      fontSize: 12,
-                      color: Color(0xFFC8E6C9),
-                      fontWeight: FontWeight.normal,
-                    ),
-                  ),
-                ],
+        automaticallyImplyLeading: !widget.isEmbedded,
+        title: InkWell(
+          onTap: () {
+            setState(() {
+              _showContactInfo = !_showContactInfo;
+            });
+          },
+          child: Row(
+            children: [
+              MiighoAvatar(
+                name: contactName,
+                size: MiighoAvatarSize.sm,
+                isOnline: true,
+                showPresenceIndicator: !isGroup,
               ),
-            ),
-          ],
+              const SizedBox(width: 10),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      contactName,
+                      style: TextStyle(
+                        fontSize: 15,
+                        fontWeight: FontWeight.w700,
+                        color: isDark ? MiighoColors.textPrimary : MiighoColors.lightTextPrimary,
+                      ),
+                    ),
+                    Text(
+                      isGroup ? 'Groupe (8 membres)' : 'En ligne',
+                      style: TextStyle(
+                        fontSize: 11,
+                        color: isGroup
+                            ? (isDark ? MiighoColors.textSecondary : MiighoColors.lightTextSecondary)
+                            : const Color(0xFF10B981),
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
         ),
         actions: [
           IconButton(
-            icon: const Icon(Icons.call_rounded),
-            onPressed: () {},
+            icon: const Icon(Icons.call_outlined),
+            tooltip: 'Appel Audio',
+            onPressed: () {
+              ScaffoldMessenger.of(context).showSnackBar(
+                const SnackBar(
+                  content: Text('Appels audio P2P (Phase suivante de la roadmap)'),
+                  duration: Duration(seconds: 2),
+                ),
+              );
+            },
           ),
           IconButton(
-            icon: const Icon(Icons.videocam_rounded),
-            onPressed: () {},
+            icon: const Icon(Icons.videocam_outlined),
+            tooltip: 'Appel Vidéo',
+            onPressed: () {
+              ScaffoldMessenger.of(context).showSnackBar(
+                const SnackBar(
+                  content: Text('Appels vidéo WebRTC (Phase suivante de la roadmap)'),
+                  duration: Duration(seconds: 2),
+                ),
+              );
+            },
           ),
           IconButton(
-            icon: const Icon(Icons.more_vert_rounded),
-            onPressed: () {},
+            icon: Icon(
+              _showContactInfo ? Icons.info_rounded : Icons.info_outline_rounded,
+              color: _showContactInfo ? MiighoColors.primary : null,
+            ),
+            tooltip: 'Fiche contact',
+            onPressed: () {
+              setState(() {
+                _showContactInfo = !_showContactInfo;
+              });
+            },
           ),
         ],
       ),
       body: Container(
-        decoration: BoxDecoration(
-          color: isDark ? MiighoColors.backgroundDark : const Color(0xFFEFEAE2),
-        ),
+        color: isDark ? MiighoColors.canvas : MiighoColors.lightCanvas,
         child: Column(
           children: [
-            // Message List with BlocBuilder
+            // Message List
             Expanded(
               child: BlocBuilder<ChatBloc, ChatState>(
                 builder: (context, state) {
@@ -145,10 +257,10 @@ class _ChatScreenState extends State<ChatScreen> {
                   if (state is MessagesLoaded && state.conversationId == widget.conversationId) {
                     messages = state.messages;
                   } else {
-                    // Default placeholder messages for seamless experience
                     messages = [
                       MiighoMessageItem(
                         id: '5',
+                        conversationId: widget.conversationId,
                         content: 'Parfait, nous validons cette étape. On passe à la suite !',
                         isMe: false,
                         type: MessageBubbleType.text,
@@ -158,6 +270,7 @@ class _ChatScreenState extends State<ChatScreen> {
                       ),
                       MiighoMessageItem(
                         id: '4',
+                        conversationId: widget.conversationId,
                         content: 'Message vocal (0:18)',
                         isMe: true,
                         type: MessageBubbleType.voice,
@@ -167,6 +280,7 @@ class _ChatScreenState extends State<ChatScreen> {
                       ),
                       MiighoMessageItem(
                         id: '3',
+                        conversationId: widget.conversationId,
                         content: 'Document d\'architecture MÏÏghO',
                         isMe: false,
                         type: MessageBubbleType.document,
@@ -177,6 +291,7 @@ class _ChatScreenState extends State<ChatScreen> {
                       ),
                       MiighoMessageItem(
                         id: '2',
+                        conversationId: widget.conversationId,
                         content: 'Merci beaucoup ! L\'application est très fluide et rapide.',
                         isMe: true,
                         type: MessageBubbleType.text,
@@ -186,6 +301,7 @@ class _ChatScreenState extends State<ChatScreen> {
                       ),
                       MiighoMessageItem(
                         id: '1',
+                        conversationId: widget.conversationId,
                         content: 'Bonjour ! Bienvenue sur MÏÏghO, l\'écosystème numérique africain.',
                         isMe: false,
                         type: MessageBubbleType.text,
@@ -218,12 +334,7 @@ class _ChatScreenState extends State<ChatScreen> {
                         reactions: msg.reactions,
                         onSwipeReply: () => _setReplyMessage(msg),
                         onReactionTap: (emoji) {
-                          ScaffoldMessenger.of(context).showSnackBar(
-                            SnackBar(
-                              content: Text('Réaction : $emoji'),
-                              duration: const Duration(seconds: 1),
-                            ),
-                          );
+                          _showEmojiReactionPicker(msg.id);
                         },
                       );
                     },
@@ -232,7 +343,7 @@ class _ChatScreenState extends State<ChatScreen> {
               ),
             ),
 
-            // Chat Input Bar
+            // Input Bar
             ChatInput(
               onSendMessage: _handleSendMessage,
               onSendVoice: _handleSendVoice,
@@ -248,5 +359,20 @@ class _ChatScreenState extends State<ChatScreen> {
         ),
       ),
     );
+
+    if (_showContactInfo) {
+      return Row(
+        children: [
+          Expanded(child: chatContent),
+          ContactInfoDrawer(
+            title: contactName,
+            isGroup: isGroup,
+            isOnline: true,
+          ),
+        ],
+      );
+    }
+
+    return chatContent;
   }
 }

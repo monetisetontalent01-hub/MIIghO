@@ -5,10 +5,14 @@ import '../../features/auth/presentation/screens/welcome_screen.dart';
 import '../../features/auth/presentation/screens/phone_input_screen.dart';
 import '../../features/auth/presentation/screens/otp_verification_screen.dart';
 import '../../features/auth/presentation/screens/profile_setup_screen.dart';
-import '../../features/chat/presentation/screens/conversations_screen.dart';
-import '../../features/chat/presentation/screens/chat_screen.dart';
+import '../../features/home/presentation/screens/home_screen.dart';
+import '../../features/chat/presentation/screens/chat_master_detail_screen.dart';
 import '../../features/contacts/presentation/screens/contacts_screen.dart';
+import '../../features/pay/presentation/screens/pay_screen.dart';
+import '../../features/identity/presentation/screens/identity_screen.dart';
 import '../../features/settings/presentation/screens/settings_screen.dart';
+import '../../features/modules/presentation/screens/module_screen.dart';
+import '../../shared/widgets/miigho_navigation_shell.dart';
 
 GoRouter createRouter(AuthRepository authRepository) {
   return GoRouter(
@@ -16,20 +20,21 @@ GoRouter createRouter(AuthRepository authRepository) {
     redirect: (BuildContext context, GoRouterState state) async {
       final token = await authRepository.getAccessToken();
       final isAuthenticated = token != null;
-      
+
       final isAuthRoute = state.matchedLocation.startsWith('/auth') || state.matchedLocation == '/welcome';
-      
+
       if (!isAuthenticated && !isAuthRoute) {
         return '/welcome';
       }
-      
+
       if (isAuthenticated && isAuthRoute) {
-        return '/conversations';
+        return '/home';
       }
-      
+
       return null;
     },
     routes: [
+      // Routes d'authentification et d'accueil
       GoRoute(
         path: '/welcome',
         builder: (context, state) => const WelcomeScreen(),
@@ -49,26 +54,67 @@ GoRouter createRouter(AuthRepository authRepository) {
         path: '/auth/profile-setup',
         builder: (context, state) => const ProfileSetupScreen(),
       ),
-      GoRoute(
-        path: '/conversations',
-        builder: (context, state) => const ConversationsScreen(),
+
+      // Routes authentifiées avec Navigation Shell MÏÏghO OS (Sidebar Desktop / BottomNav Mobile)
+      ShellRoute(
+        builder: (context, state, child) {
+          return MiighoNavigationShell(state: state, child: child);
+        },
         routes: [
           GoRoute(
-            path: ':id',
-            builder: (context, state) {
-              final id = state.pathParameters['id']!;
-              return ChatScreen(conversationId: id);
-            },
+            path: '/home',
+            builder: (context, state) => const HomeScreen(),
+          ),
+          GoRoute(
+            path: '/conversations',
+            builder: (context, state) => const ChatMasterDetailScreen(),
+            routes: [
+              GoRoute(
+                path: ':id',
+                builder: (context, state) {
+                  final id = state.pathParameters['id']!;
+                  return ChatMasterDetailScreen(initialConversationId: id);
+                },
+              ),
+            ],
+          ),
+          GoRoute(
+            path: '/contacts',
+            builder: (context, state) => const ContactsScreen(),
+          ),
+          GoRoute(
+            path: '/pay',
+            builder: (context, state) => const PayScreen(),
+          ),
+          GoRoute(
+            path: '/identity',
+            builder: (context, state) => const IdentityScreen(),
+          ),
+          GoRoute(
+            path: '/settings',
+            builder: (context, state) => const SettingsScreen(),
+          ),
+          GoRoute(
+            path: '/business',
+            builder: (context, state) => const ModuleScreen(moduleId: 'business'),
+          ),
+          GoRoute(
+            path: '/market',
+            builder: (context, state) => const ModuleScreen(moduleId: 'market'),
+          ),
+          GoRoute(
+            path: '/cloud',
+            builder: (context, state) => const ModuleScreen(moduleId: 'cloud'),
+          ),
+          GoRoute(
+            path: '/media',
+            builder: (context, state) => const ModuleScreen(moduleId: 'media'),
+          ),
+          GoRoute(
+            path: '/dev',
+            builder: (context, state) => const ModuleScreen(moduleId: 'dev'),
           ),
         ],
-      ),
-      GoRoute(
-        path: '/contacts',
-        builder: (context, state) => const ContactsScreen(),
-      ),
-      GoRoute(
-        path: '/settings',
-        builder: (context, state) => const SettingsScreen(),
       ),
     ],
   );

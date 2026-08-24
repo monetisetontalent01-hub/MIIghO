@@ -1,42 +1,96 @@
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
+import '../../../../core/theme/colors.dart';
 import '../../../../shared/widgets/miigho_button.dart';
+import '../../../../shared/widgets/miigho_logo.dart';
 
 class WelcomeScreen extends StatelessWidget {
   const WelcomeScreen({super.key});
 
   @override
   Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final isDark = theme.brightness == Brightness.dark;
+
     return Scaffold(
+      backgroundColor: isDark ? MiighoColors.canvas : MiighoColors.lightCanvas,
       body: SafeArea(
         child: Padding(
-          padding: const EdgeInsets.all(24.0),
+          padding: const EdgeInsets.symmetric(horizontal: 28.0, vertical: 20),
           child: Column(
             mainAxisAlignment: MainAxisAlignment.center,
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
               const Spacer(),
-              const Icon(Icons.hub, size: 100, color: Color(0xFF1B5E20)),
-              const SizedBox(height: 24),
+              Center(
+                child: Container(
+                  padding: const EdgeInsets.all(24),
+                  decoration: BoxDecoration(
+                    color: MiighoColors.primary.withValues(alpha: isDark ? 0.15 : 0.08),
+                    shape: BoxShape.circle,
+                    boxShadow: [
+                      BoxShadow(
+                        color: MiighoColors.primary.withValues(alpha: isDark ? 0.25 : 0.12),
+                        blurRadius: 36,
+                        spreadRadius: 4,
+                      ),
+                    ],
+                  ),
+                  child: const MiighoLogo(
+                    size: 96,
+                    variant: MiighoLogoVariant.markOnly,
+                  ),
+                ),
+              ),
+              const SizedBox(height: 32),
               Text(
                 'MÏÏghO',
                 textAlign: TextAlign.center,
-                style: Theme.of(context).textTheme.displayLarge?.copyWith(
-                  color: const Color(0xFF1B5E20),
+                style: TextStyle(
+                  fontFamily: 'Outfit',
+                  fontSize: 38,
+                  fontWeight: FontWeight.w900,
+                  color: isDark ? MiighoColors.textPrimary : MiighoColors.lightTextPrimary,
+                  letterSpacing: -0.8,
                 ),
               ),
-              const SizedBox(height: 16),
+              const SizedBox(height: 10),
               Text(
-                'Connectez l\'Afrique',
+                'L\'Écosystème Numérique Panafricain',
                 textAlign: TextAlign.center,
-                style: Theme.of(context).textTheme.titleLarge,
+                style: TextStyle(
+                  fontSize: 16,
+                  fontWeight: FontWeight.w600,
+                  color: MiighoColors.gold,
+                  letterSpacing: 0.2,
+                ),
+              ),
+              const SizedBox(height: 8),
+              Text(
+                'Une Identité. Un Écosystème. Plusieurs Services.',
+                textAlign: TextAlign.center,
+                style: TextStyle(
+                  fontSize: 13,
+                  color: isDark ? MiighoColors.textSecondary : MiighoColors.lightTextSecondary,
+                ),
               ),
               const Spacer(),
               MiighoButton(
                 text: 'Commencer',
                 onPressed: () => context.push('/auth/phone'),
               ),
-              const SizedBox(height: 24),
+              const SizedBox(height: 16),
+              Center(
+                child: Text(
+                  'Horizon 2036 • MÏÏghO OS v2.0',
+                  style: TextStyle(
+                    fontSize: 11,
+                    fontWeight: FontWeight.w600,
+                    color: isDark ? MiighoColors.textMuted : MiighoColors.lightTextMuted,
+                  ),
+                ),
+              ),
+              const SizedBox(height: 12),
             ],
           ),
         ),

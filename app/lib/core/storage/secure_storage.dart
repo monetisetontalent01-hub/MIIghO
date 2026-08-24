@@ -7,6 +7,8 @@ class SecureStorageService {
   static const _keyRefreshToken = 'refresh_token';
   static const _keyUserId = 'user_id';
   static const _keyPhone = 'phone';
+  static const _keyThemeMode = 'theme_mode';
+  static const _keyLocale = 'app_locale';
 
   Future<void> saveTokens({required String accessToken, required String refreshToken}) async {
     await _storage.write(key: _keyAccessToken, value: accessToken);
@@ -20,6 +22,21 @@ class SecureStorageService {
     await _storage.write(key: _keyUserId, value: id);
     await _storage.write(key: _keyPhone, value: phone);
   }
+
+  Future<String?> getUserId() => _storage.read(key: _keyUserId);
+  Future<String?> getPhone() => _storage.read(key: _keyPhone);
+
+  Future<void> saveThemeMode(String mode) async {
+    await _storage.write(key: _keyThemeMode, value: mode);
+  }
+
+  Future<String?> getThemeMode() => _storage.read(key: _keyThemeMode);
+
+  Future<void> saveLocale(String localeCode) async {
+    await _storage.write(key: _keyLocale, value: localeCode);
+  }
+
+  Future<String?> getLocale() => _storage.read(key: _keyLocale);
 
   Future<void> clearTokens() async {
     await _storage.delete(key: _keyAccessToken);
