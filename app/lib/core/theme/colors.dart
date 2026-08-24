@@ -1,19 +1,58 @@
 import 'package:flutter/material.dart';
 
+/// MÏÏghO Design System v1.0 — Tokens de Couleurs Officiels
 class MiighoColors {
-  static const Color primary = Color(0xFF1B5E20);
-  static const Color primaryLight = Color(0xFF4CAF50);
-  static const Color secondary = Color(0xFFFFC107);
-  
-  static const Color backgroundLight = Color(0xFFFFFFFF);
-  static const Color backgroundDark = Color(0xFF121212);
-  
-  static const Color surfaceLight = Color(0xFFF5F5F5);
-  static const Color surfaceDark = Color(0xFF1E1E1E);
-  
-  static const Color textLight = Color(0xFF000000);
-  static const Color textDark = Color(0xFFFFFFFF);
-  
-  static const Color error = Color(0xFFD32F2F);
-  static const Color success = Color(0xFF388E3C);
+  // === Fondations & Surfaces Minérales (Dark Mode Principal) ===
+  static const Color canvas = Color(0xFF080C14);
+  static const Color surface1 = Color(0xFF0E1422);
+  static const Color surface2 = Color(0xFF141D30);
+  static const Color surface3 = Color(0xFF1B263E);
+  static const Color surfaceElevated = Color(0xFF22304E);
+
+  // === Mode Clair (Optionnel) ===
+  static const Color lightCanvas = Color(0xFFF8FAFC);
+  static const Color lightSurface = Color(0xFFFFFFFF);
+  static const Color lightSurface2 = Color(0xFFF1F5F9);
+
+  // === Rétrocompatibilité Thème ===
+  static const Color backgroundDark = canvas;
+  static const Color backgroundLight = lightCanvas;
+  static const Color surfaceDark = surface2;
+  static const Color surfaceLight = lightSurface;
+
+  // === Couleur Signature MÏÏghO (Pourpre Royal Panafricain) ===
+  static const Color primary = Color(0xFF7C3AED);
+  static const Color primaryLight = Color(0xFF9333EA);
+  static const Color primaryDark = Color(0xFF6D28D9);
+  static const Color primaryAlpha = Color(0x1F7C3AED); // ~12% opacity
+
+  // === Accent Valeur & Finance (Or Sahélien) ===
+  static const Color gold = Color(0xFFF59E0B);
+  static const Color goldLight = Color(0xFFFBBF24);
+  static const Color goldAlpha = Color(0x1FF59E0B);
+  static const Color secondary = gold;
+
+  // === Typographie & Textes ===
+  static const Color textPrimary = Color(0xFFF8FAFC);
+  static const Color textSecondary = Color(0xFF94A3B8);
+  static const Color textMuted = Color(0xFF64748B);
+  static const Color textDisabled = Color(0xFF475569);
+  static const Color textLight = Color(0xFF0F172A);
+  static const Color textDark = Color(0xFFF8FAFC);
+
+  // === Bordures & Séparateurs ===
+  static const Color borderSubtle = Color(0x0FFFFFFF); // 6% white
+  static const Color borderMedium = Color(0x1FFFFFFF); // 12% white
+  static const Color borderStrong = Color(0x33FFFFFF); // 20% white
+  static const Color borderFocus = primary;
+
+  // === Sémantique & Statuts Système ===
+  static const Color success = Color(0xFF10B981);
+  static const Color successAlpha = Color(0x1F10B981);
+  static const Color warning = Color(0xFFF97316);
+  static const Color warningAlpha = Color(0x1FF97316);
+  static const Color error = Color(0xFFEF4444);
+  static const Color errorAlpha = Color(0x1FEF4444);
+  static const Color info = Color(0xFF3B82F6);
+  static const Color infoAlpha = Color(0x1F3B82F6);
 }
