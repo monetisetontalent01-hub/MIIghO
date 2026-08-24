@@ -1,0 +1,113 @@
+syntax = "proto3";
+
+package miigho.chat.v1;
+option go_package = "miigho/proto/chat/v1;chatv1";
+
+import "google/protobuf/timestamp.proto";
+
+enum MessageType {
+    MESSAGE_TYPE_UNSPECIFIED = 0;
+    MESSAGE_TYPE_TEXT = 1;
+    MESSAGE_TYPE_IMAGE = 2;
+    MESSAGE_TYPE_AUDIO = 3;
+    MESSAGE_TYPE_VIDEO = 4;
+}
+
+enum MessageStatus {
+    MESSAGE_STATUS_UNSPECIFIED = 0;
+    MESSAGE_STATUS_SENT = 1;
+    MESSAGE_STATUS_DELIVERED = 2;
+    MESSAGE_STATUS_READ = 3;
+    MESSAGE_STATUS_FAILED = 4;
+}
+
+message MediaAttachment {
+    string media_id = 1;
+    string mime_type = 2;
+    int64 size_bytes = 3;
+    string thumbnail_url = 4;
+    string url = 5;
+}
+
+message SendMessage {
+    string id = 1; // Client-side generated UUID
+    string conversation_id = 2;
+    MessageType type = 3;
+    string content = 4; // Encrypted content or plain text
+    MediaAttachment media = 5;
+    string reply_to = 6;
+    bytes encryption_metadata = 7; // For E2E encryption
+}
+
+message MessageAck {
+    string id = 1; // Echo back the client-side ID
+    MessageStatus status = 2;
+    google.protobuf.Timestamp server_timestamp = 3;
+}
+
+message TypingIndicator {
+    string conversation_id = 1;
+    string user_id = 2;
+    bool is_typing = 3;
+}
+
+message PresenceUpdate {
+    string user_id = 1;
+    bool is_online = 2;
+    google.protobuf.Timestamp last_seen = 3;
+}
+
+message MessageReaction {
+    string message_id = 1;
+    string user_id = 2;
+    string emoji = 3;
+    bool is_removed = 4;
+}
+
+message ReadReceipt {
+    string message_id = 1;
+    string conversation_id = 2;
+    string user_id = 3;
+    MessageStatus status = 4;
+    google.protobuf.Timestamp timestamp = 5;
+}
+
+message NewMessage {
+    string id = 1;
+    string conversation_id = 2;
+    string sender_id = 3;
+    MessageType type = 4;
+    string content = 5;
+    MediaAttachment media = 6;
+    string reply_to = 7;
+    bytes encryption_metadata = 8;
+    google.protobuf.Timestamp created_at = 9;
+}
+
+message StatusUpdate {
+    string message_id = 1;
+    string conversation_id = 2;
+    string user_id = 3; // Who updated the status
+    MessageStatus status = 4;
+    google.protobuf.Timestamp timestamp = 5;
+}
+
+message Error {
+    string code = 1;
+    string message = 2;
+}
+
+// Envelope for all WebSocket messages
+message WebSocketEnvelope {
+    oneof payload {
+        SendMessage send_message = 1;
+        MessageAck message_ack = 2;
+        TypingIndicator typing_indicator = 3;
+        PresenceUpdate presence_update = 4;
+        MessageReaction message_reaction = 5;
+        ReadReceipt read_receipt = 6;
+        NewMessage new_message = 7;
+        StatusUpdate status_update = 8;
+        Error error = 9;
+    }
+}

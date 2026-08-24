@@ -1,0 +1,26 @@
+syntax = "proto3";
+
+package miigho.common.v1;
+option go_package = "miigho/proto/common/v1;commonv1";
+
+import "google/protobuf/timestamp.proto";
+
+message Error {
+    string code = 1;
+    string message = 2;
+    map<string, string> details = 3;
+}
+
+message PaginationRequest {
+    string cursor = 1;
+    int32 limit = 2;
+}
+
+message PaginationResponse {
+    string next_cursor = 1;
+    bool has_more = 2;
+}
+
+message UUID {
+    string value = 1;
+}

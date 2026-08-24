@@ -1,0 +1,42 @@
+syntax = "proto3";
+
+package miigho.auth.v1;
+option go_package = "miigho/proto/auth/v1;authv1";
+
+message SendOtpRequest {
+    string phone_number = 1;
+}
+
+message SendOtpResponse {
+    string status = 1;
+    int32 expires_in = 2;
+}
+
+message VerifyOtpRequest {
+    string phone_number = 1;
+    string code = 2;
+    string device_id = 3;
+}
+
+message VerifyOtpResponse {
+    string access_token = 1;
+    string refresh_token = 2;
+    bool is_new_user = 3;
+}
+
+message RefreshTokenRequest {
+    string refresh_token = 1;
+}
+
+message RefreshTokenResponse {
+    string access_token = 1;
+    string refresh_token = 2;
+}
+
+message LogoutRequest {
+    string refresh_token = 1;
+}
+
+message LogoutResponse {
+    bool success = 1;
+}

@@ -1,0 +1,96 @@
+version: '3.8'
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: ${DB_USER:-miigho}
+      POSTGRES_PASSWORD: ${DB_PASSWORD:-miigho_secret}
+      POSTGRES_DB: ${DB_NAME:-miigho_dev}
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${DB_USER:-miigho}"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+    networks:
+      - miigho_net
+
+  valkey:
+    image: valkey/valkey:7.2
+    ports:
+      - "6379:6379"
+    volumes:
+      - valkey_data:/data
+    healthcheck:
+      test: ["CMD", "valkey-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+    networks:
+      - miigho_net
+
+  minio:
+    image: minio/minio:RELEASE.2024-01-31T20-20-33Z
+    command: server /data --console-address ":9001"
+    environment:
+      MINIO_ROOT_USER: ${MINIO_ROOT_USER:-admin}
+      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD:-password123}
+    ports:
+      - "9000:9000"
+      - "9001:9001"
+    volumes:
+      - minio_data:/data
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:9000/minio/health/live"]
+      interval: 30s
+      timeout: 20s
+      retries: 3
+    networks:
+      - miigho_net
+
+  minio-create-bucket:
+    image: minio/mc
+    depends_on:
+      - minio
+    entrypoint: >
+      /bin/sh -c "
+      /usr/bin/mc alias set myminio http://minio:9000 ${MINIO_ROOT_USER:-admin} ${MINIO_ROOT_PASSWORD:-password123};
+      /usr/bin/mc mb myminio/miigho-media --ignore-existing;
+      /usr/bin/mc policy set public myminio/miigho-media;
+      exit 0;
+      "
+    networks:
+      - miigho_net
+
+  nats:
+    image: nats:2.10
+    command: -js -m 8222
+    ports:
+      - "4222:4222"
+      - "8222:8222"
+    volumes:
+      - nats_data:/data
+    networks:
+      - miigho_net
+
+  mailhog:
+    image: mailhog/mailhog
+    ports:
+      - "1025:1025"
+      - "8025:8025"
+    networks:
+      - miigho_net
+
+volumes:
+  postgres_data:
+  valkey_data:
+  minio_data:
+  nats_data:
+
+networks:
+  miigho_net:
+    driver: bridge

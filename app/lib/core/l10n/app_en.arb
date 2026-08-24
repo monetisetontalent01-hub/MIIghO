@@ -1,0 +1,14 @@
+{
+  "@@locale": "en",
+  "welcome": "Welcome",
+  "login": "Login",
+  "signup": "Sign Up",
+  "phone": "Phone Number",
+  "sendCode": "Send Code",
+  "verifyCode": "Verify Code",
+  "chats": "Chats",
+  "contacts": "Contacts",
+  "settings": "Settings",
+  "error": "An error occurred",
+  "search": "Search"
+}

@@ -1,0 +1,50 @@
+# Go
+bin/
+*.exe
+*.exe~
+*.dll
+*.so
+*.dylib
+*.test
+*.out
+vendor/
+
+# OS specific
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+
+# IDE / Editor
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+*.bak
+
+# Environment
+.env
+.env.local
+
+# Flutter / Dart
+app/.dart_tool/
+app/.packages
+app/build/
+app/.pub-cache/
+app/.pub/
+app/android/.gradle/
+app/android/local.properties
+app/ios/Pods/
+app/ios/.symlinks/
+app/ios/Flutter/Flutter.framework
+app/ios/Flutter/Flutter.podspec
+
+# Docker
+docker-compose.override.yml
+
+# Logs
+*.log
