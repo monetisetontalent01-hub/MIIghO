@@ -7,6 +7,8 @@ import '../../features/auth/presentation/screens/otp_verification_screen.dart';
 import '../../features/auth/presentation/screens/profile_setup_screen.dart';
 import '../../features/chat/presentation/screens/conversations_screen.dart';
 import '../../features/chat/presentation/screens/chat_screen.dart';
+import '../../features/contacts/presentation/screens/contacts_screen.dart';
+import '../../features/settings/presentation/screens/settings_screen.dart';
 
 GoRouter createRouter(AuthRepository authRepository) {
   return GoRouter(
@@ -62,11 +64,11 @@ GoRouter createRouter(AuthRepository authRepository) {
       ),
       GoRoute(
         path: '/contacts',
-        builder: (context, state) => const Scaffold(body: Center(child: Text('Contacts'))),
+        builder: (context, state) => const ContactsScreen(),
       ),
       GoRoute(
         path: '/settings',
-        builder: (context, state) => const Scaffold(body: Center(child: Text('Settings'))),
+        builder: (context, state) => const SettingsScreen(),
       ),
     ],
   );

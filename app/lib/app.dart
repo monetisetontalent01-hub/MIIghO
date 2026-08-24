@@ -13,6 +13,9 @@ import 'features/auth/presentation/bloc/auth_bloc.dart';
 import 'features/chat/data/chat_repository.dart';
 import 'features/chat/presentation/bloc/chat_bloc.dart';
 
+import 'features/contacts/data/contacts_repository.dart';
+import 'features/contacts/presentation/bloc/contacts_bloc.dart';
+
 class MiighoApp extends StatelessWidget {
   final SecureStorageService secureStorage;
   final MiighoDatabase database;
@@ -37,6 +40,10 @@ class MiighoApp extends StatelessWidget {
       wsClient: wsClient,
       secureStorage: secureStorage,
     );
+    final contactsRepository = ContactsRepository(
+      apiClient: apiClient,
+      database: database,
+    );
     final router = createRouter(authRepository);
 
     return MultiBlocProvider(
@@ -46,6 +53,9 @@ class MiighoApp extends StatelessWidget {
         ),
         BlocProvider(
           create: (_) => ChatBloc(chatRepository: chatRepository)..add(LoadConversations()),
+        ),
+        BlocProvider(
+          create: (_) => ContactsBloc(repository: contactsRepository)..add(const LoadContacts()),
         ),
       ],
       child: MaterialApp.router(
