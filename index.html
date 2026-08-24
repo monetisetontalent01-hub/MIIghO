@@ -1,0 +1,1945 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>MÏÏghO — Écosystème Numérique Panafricain</title>
+    <meta name="description" content="MÏÏghO est une super-app innovante (messagerie, paiements, marketplace) destinée au marché africain.">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&family=Outfit:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+    <style>
+        /* ═══════════════════════════════════════════════
+           DESIGN SYSTEM — MÏÏghO African Premium Theme
+           ═══════════════════════════════════════════════ */
+        :root {
+            /* Core palette */
+            --bg-primary: #0a0e1a;
+            --bg-secondary: #111827;
+            --bg-tertiary: #1a1f33;
+            --bg-card: rgba(26, 31, 51, 0.7);
+            --bg-input: rgba(30, 36, 58, 0.8);
+            --bg-hover: rgba(107, 33, 168, 0.15);
+
+            /* African-inspired accent colors */
+            --accent-purple: #8b5cf6;
+            --accent-purple-deep: #6b21a8;
+            --accent-gold: #f59e0b;
+            --accent-gold-light: #fbbf24;
+            --accent-orange: #ea580c;
+            --accent-green: #059669;
+            --accent-green-light: #10b981;
+            --accent-red: #ef4444;
+            --accent-blue: #3b82f6;
+
+            /* Gradients */
+            --gradient-primary: linear-gradient(135deg, #6b21a8, #8b5cf6, #a855f7);
+            --gradient-gold: linear-gradient(135deg, #ea580c, #f59e0b, #fbbf24);
+            --gradient-success: linear-gradient(135deg, #059669, #10b981);
+            --gradient-card: linear-gradient(135deg, rgba(107, 33, 168, 0.1), rgba(139, 92, 246, 0.05));
+            --gradient-kente: linear-gradient(135deg, #6b21a8 0%, #ea580c 25%, #f59e0b 50%, #059669 75%, #6b21a8 100%);
+
+            /* Text */
+            --text-primary: #f1f5f9;
+            --text-secondary: #94a3b8;
+            --text-tertiary: #64748b;
+            --text-accent: #c4b5fd;
+
+            /* Borders */
+            --border-subtle: rgba(148, 163, 184, 0.1);
+            --border-focus: rgba(139, 92, 246, 0.5);
+
+            /* Shadows */
+            --shadow-sm: 0 2px 8px rgba(0, 0, 0, 0.3);
+            --shadow-md: 0 4px 16px rgba(0, 0, 0, 0.4);
+            --shadow-lg: 0 8px 32px rgba(0, 0, 0, 0.5);
+            --shadow-glow: 0 0 20px rgba(139, 92, 246, 0.3);
+
+            /* Radius */
+            --radius-sm: 8px;
+            --radius-md: 12px;
+            --radius-lg: 16px;
+            --radius-xl: 24px;
+            --radius-full: 9999px;
+
+            /* Transitions */
+            --transition-fast: 150ms cubic-bezier(0.4, 0, 0.2, 1);
+            --transition-normal: 250ms cubic-bezier(0.4, 0, 0.2, 1);
+            --transition-slow: 400ms cubic-bezier(0.4, 0, 0.2, 1);
+
+            /* Spacing */
+            --phone-width: 390px;
+            --phone-height: 844px;
+        }
+
+        /* ═══════ RESET & BASE ═══════ */
+        *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+        
+        body {
+            font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+            background: var(--bg-primary);
+            color: var(--text-primary);
+            min-height: 100vh;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            overflow: hidden;
+        }
+
+        /* ═══════ PHONE FRAME ═══════ */
+        .phone-frame {
+            width: var(--phone-width);
+            height: var(--phone-height);
+            background: var(--bg-secondary);
+            border-radius: 40px;
+            border: 3px solid rgba(139, 92, 246, 0.2);
+            box-shadow: var(--shadow-lg), 0 0 60px rgba(139, 92, 246, 0.1);
+            overflow: hidden;
+            position: relative;
+            display: flex;
+            flex-direction: column;
+        }
+
+        /* Dynamic island */
+        .phone-frame::before {
+            content: '';
+            position: absolute;
+            top: 10px;
+            left: 50%;
+            transform: translateX(-50%);
+            width: 120px;
+            height: 28px;
+            background: #000;
+            border-radius: 20px;
+            z-index: 100;
+        }
+
+        /* Status bar */
+        .status-bar {
+            height: 54px;
+            display: flex;
+            justify-content: space-between;
+            align-items: flex-end;
+            padding: 0 28px 6px;
+            font-size: 12px;
+            font-weight: 600;
+            color: var(--text-primary);
+            z-index: 50;
+            flex-shrink: 0;
+        }
+        .status-bar .time { font-size: 14px; font-weight: 700; }
+        .status-bar .icons { display: flex; gap: 6px; align-items: center; }
+        .status-bar .icons svg { width: 16px; height: 16px; fill: currentColor; }
+
+        /* ═══════ SCREENS ═══════ */
+        .screen {
+            flex: 1;
+            display: none;
+            flex-direction: column;
+            overflow: hidden;
+            animation: screenIn 0.35s ease-out;
+        }
+        .screen.active { display: flex; }
+
+        @keyframes screenIn {
+            from { opacity: 0; transform: translateX(30px); }
+            to { opacity: 1; transform: translateX(0); }
+        }
+        @keyframes screenInReverse {
+            from { opacity: 0; transform: translateX(-30px); }
+            to { opacity: 1; transform: translateX(0); }
+        }
+        @keyframes fadeIn {
+            from { opacity: 0; transform: translateY(10px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+        @keyframes slideUp {
+            from { opacity: 0; transform: translateY(100%); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+        @keyframes pulse {
+            0%, 100% { transform: scale(1); }
+            50% { transform: scale(1.05); }
+        }
+        @keyframes shimmer {
+            0% { background-position: -200% 0; }
+            100% { background-position: 200% 0; }
+        }
+        @keyframes typing {
+            0%, 60%, 100% { opacity: 0.3; transform: scale(0.8); }
+            30% { opacity: 1; transform: scale(1); }
+        }
+        @keyframes kenteShine {
+            0% { background-position: 0% 50%; }
+            50% { background-position: 100% 50%; }
+            100% { background-position: 0% 50%; }
+        }
+        @keyframes checkmark {
+            0% { stroke-dashoffset: 30; }
+            100% { stroke-dashoffset: 0; }
+        }
+        @keyframes ripple {
+            0% { transform: scale(0); opacity: 0.6; }
+            100% { transform: scale(4); opacity: 0; }
+        }
+
+        /* ═══════ SPLASH SCREEN ═══════ */
+        #splash-screen {
+            background: var(--bg-primary);
+            justify-content: center;
+            align-items: center;
+            position: relative;
+        }
+        #splash-screen::after {
+            content: '';
+            position: absolute;
+            inset: 0;
+            background: radial-gradient(circle at 50% 40%, rgba(107, 33, 168, 0.2), transparent 70%);
+        }
+        .splash-logo {
+            width: 120px;
+            height: 120px;
+            border-radius: 30px;
+            object-fit: cover;
+            animation: pulse 2s ease-in-out infinite;
+            position: relative;
+            z-index: 1;
+        }
+        .splash-title {
+            font-family: 'Outfit', sans-serif;
+            font-size: 36px;
+            font-weight: 800;
+            background: var(--gradient-primary);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+            margin-top: 20px;
+            z-index: 1;
+        }
+        .splash-subtitle {
+            color: var(--text-secondary);
+            font-size: 13px;
+            margin-top: 8px;
+            letter-spacing: 2px;
+            text-transform: uppercase;
+            z-index: 1;
+        }
+        .splash-loader {
+            width: 160px;
+            height: 3px;
+            background: var(--bg-tertiary);
+            border-radius: 2px;
+            margin-top: 40px;
+            overflow: hidden;
+            z-index: 1;
+        }
+        .splash-loader-bar {
+            height: 100%;
+            width: 0%;
+            background: var(--gradient-primary);
+            border-radius: 2px;
+            transition: width 0.3s ease;
+        }
+
+        /* ═══════ AUTH SCREEN ═══════ */
+        #auth-screen {
+            background: var(--bg-primary);
+            padding: 0 24px 24px;
+        }
+        .auth-header {
+            text-align: center;
+            padding-top: 20px;
+        }
+        .auth-logo-small {
+            width: 64px;
+            height: 64px;
+            border-radius: 18px;
+            object-fit: cover;
+        }
+        .auth-title {
+            font-family: 'Outfit', sans-serif;
+            font-size: 24px;
+            font-weight: 700;
+            margin-top: 16px;
+            color: var(--text-primary);
+        }
+        .auth-desc {
+            color: var(--text-secondary);
+            font-size: 14px;
+            margin-top: 8px;
+            line-height: 1.5;
+        }
+        .auth-form {
+            margin-top: 32px;
+            display: flex;
+            flex-direction: column;
+            gap: 16px;
+        }
+        .input-group {
+            position: relative;
+        }
+        .input-group label {
+            display: block;
+            font-size: 12px;
+            font-weight: 600;
+            color: var(--text-secondary);
+            margin-bottom: 6px;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+        .input-row {
+            display: flex;
+            gap: 8px;
+        }
+        .country-code {
+            width: 80px;
+            padding: 14px 12px;
+            background: var(--bg-input);
+            border: 1px solid var(--border-subtle);
+            border-radius: var(--radius-md);
+            color: var(--text-primary);
+            font-size: 16px;
+            font-weight: 600;
+            text-align: center;
+            outline: none;
+            transition: border-color var(--transition-fast);
+        }
+        .country-code:focus { border-color: var(--border-focus); }
+        
+        .input-field {
+            flex: 1;
+            padding: 14px 16px;
+            background: var(--bg-input);
+            border: 1px solid var(--border-subtle);
+            border-radius: var(--radius-md);
+            color: var(--text-primary);
+            font-size: 16px;
+            outline: none;
+            transition: border-color var(--transition-fast);
+        }
+        .input-field:focus { border-color: var(--border-focus); box-shadow: var(--shadow-glow); }
+        .input-field::placeholder { color: var(--text-tertiary); }
+
+        .otp-inputs {
+            display: flex;
+            gap: 10px;
+            justify-content: center;
+        }
+        .otp-input {
+            width: 48px;
+            height: 56px;
+            text-align: center;
+            font-size: 22px;
+            font-weight: 700;
+            background: var(--bg-input);
+            border: 2px solid var(--border-subtle);
+            border-radius: var(--radius-md);
+            color: var(--text-primary);
+            outline: none;
+            transition: all var(--transition-fast);
+        }
+        .otp-input:focus {
+            border-color: var(--accent-purple);
+            box-shadow: var(--shadow-glow);
+        }
+        .otp-input.filled {
+            border-color: var(--accent-green);
+            background: rgba(5, 150, 105, 0.1);
+        }
+
+        .btn-primary {
+            width: 100%;
+            padding: 16px;
+            background: var(--gradient-primary);
+            border: none;
+            border-radius: var(--radius-md);
+            color: white;
+            font-size: 16px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all var(--transition-normal);
+            position: relative;
+            overflow: hidden;
+        }
+        .btn-primary:hover { transform: translateY(-1px); box-shadow: var(--shadow-glow); }
+        .btn-primary:active { transform: scale(0.98); }
+        .btn-primary:disabled { opacity: 0.5; cursor: not-allowed; transform: none; }
+        .btn-primary .ripple-effect {
+            position: absolute;
+            border-radius: 50%;
+            width: 20px;
+            height: 20px;
+            background: rgba(255,255,255,0.3);
+            animation: ripple 0.6s ease-out forwards;
+        }
+
+        .auth-footer {
+            text-align: center;
+            margin-top: 24px;
+            color: var(--text-tertiary);
+            font-size: 12px;
+            line-height: 1.6;
+        }
+        .auth-footer a { color: var(--accent-purple); text-decoration: none; }
+        .otp-timer {
+            text-align: center;
+            color: var(--text-secondary);
+            font-size: 14px;
+            margin-top: 8px;
+        }
+        .otp-timer span { color: var(--accent-gold); font-weight: 600; }
+        .otp-hint {
+            text-align: center;
+            color: var(--text-tertiary);
+            font-size: 12px;
+            margin-top: 4px;
+            font-style: italic;
+        }
+
+        /* ═══════ PROFILE SETUP ═══════ */
+        #profile-setup {
+            background: var(--bg-primary);
+            padding: 0 24px 24px;
+        }
+        .avatar-upload {
+            width: 100px;
+            height: 100px;
+            border-radius: 50%;
+            background: var(--gradient-card);
+            border: 3px dashed var(--border-subtle);
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            margin: 24px auto 0;
+            cursor: pointer;
+            transition: all var(--transition-normal);
+            position: relative;
+            overflow: hidden;
+        }
+        .avatar-upload:hover { border-color: var(--accent-purple); }
+        .avatar-upload svg { width: 32px; height: 32px; color: var(--text-tertiary); }
+        .avatar-upload img {
+            width: 100%;
+            height: 100%;
+            object-fit: cover;
+            border-radius: 50%;
+        }
+        .avatar-upload .avatar-overlay {
+            position: absolute;
+            inset: 0;
+            background: rgba(0,0,0,0.5);
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            opacity: 0;
+            transition: opacity var(--transition-fast);
+        }
+        .avatar-upload:hover .avatar-overlay { opacity: 1; }
+
+        /* ═══════ MAIN APP ═══════ */
+        #main-app {
+            background: var(--bg-secondary);
+        }
+        .app-header {
+            padding: 0 20px 12px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            flex-shrink: 0;
+        }
+        .app-logo {
+            font-family: 'Outfit', sans-serif;
+            font-size: 22px;
+            font-weight: 800;
+            background: var(--gradient-primary);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+        }
+        .header-actions { display: flex; gap: 12px; }
+        .header-btn {
+            width: 38px;
+            height: 38px;
+            border-radius: 50%;
+            background: var(--bg-tertiary);
+            border: 1px solid var(--border-subtle);
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            cursor: pointer;
+            transition: all var(--transition-fast);
+            color: var(--text-secondary);
+        }
+        .header-btn:hover { background: var(--bg-hover); color: var(--accent-purple); }
+        .header-btn svg { width: 18px; height: 18px; }
+        .header-btn .badge {
+            position: absolute;
+            top: -2px;
+            right: -2px;
+            width: 16px;
+            height: 16px;
+            background: var(--accent-red);
+            border-radius: 50%;
+            font-size: 9px;
+            font-weight: 700;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            color: white;
+        }
+
+        /* Tab content area */
+        .tab-content {
+            flex: 1;
+            overflow: hidden;
+            display: flex;
+            flex-direction: column;
+        }
+        .tab-panel { display: none; flex: 1; flex-direction: column; overflow: hidden; }
+        .tab-panel.active { display: flex; }
+
+        /* Bottom tabs */
+        .bottom-tabs {
+            display: flex;
+            height: 72px;
+            background: rgba(17, 24, 39, 0.95);
+            backdrop-filter: blur(20px);
+            border-top: 1px solid var(--border-subtle);
+            padding-bottom: 8px;
+            flex-shrink: 0;
+        }
+        .tab-btn {
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            gap: 4px;
+            background: none;
+            border: none;
+            color: var(--text-tertiary);
+            cursor: pointer;
+            transition: all var(--transition-fast);
+            position: relative;
+        }
+        .tab-btn.active { color: var(--accent-purple); }
+        .tab-btn.active::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            width: 28px;
+            height: 3px;
+            background: var(--accent-purple);
+            border-radius: 0 0 3px 3px;
+        }
+        .tab-btn svg { width: 22px; height: 22px; }
+        .tab-btn span { font-size: 10px; font-weight: 600; }
+        .tab-btn .tab-badge {
+            position: absolute;
+            top: 8px;
+            right: calc(50% - 18px);
+            width: 18px;
+            height: 18px;
+            background: var(--accent-red);
+            border-radius: 50%;
+            font-size: 10px;
+            font-weight: 700;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            color: white;
+        }
+
+        /* ═══════ CHAT LIST ═══════ */
+        .search-bar {
+            margin: 0 20px 12px;
+            position: relative;
+        }
+        .search-bar input {
+            width: 100%;
+            padding: 12px 16px 12px 42px;
+            background: var(--bg-tertiary);
+            border: 1px solid var(--border-subtle);
+            border-radius: var(--radius-full);
+            color: var(--text-primary);
+            font-size: 14px;
+            outline: none;
+            transition: all var(--transition-fast);
+        }
+        .search-bar input:focus { border-color: var(--border-focus); }
+        .search-bar input::placeholder { color: var(--text-tertiary); }
+        .search-bar svg {
+            position: absolute;
+            left: 14px;
+            top: 50%;
+            transform: translateY(-50%);
+            width: 18px;
+            height: 18px;
+            color: var(--text-tertiary);
+        }
+
+        .chat-list {
+            flex: 1;
+            overflow-y: auto;
+            padding: 0 12px;
+        }
+        .chat-list::-webkit-scrollbar { width: 3px; }
+        .chat-list::-webkit-scrollbar-thumb { background: var(--border-subtle); border-radius: 3px; }
+
+        .chat-item {
+            display: flex;
+            align-items: center;
+            gap: 14px;
+            padding: 14px 12px;
+            border-radius: var(--radius-md);
+            cursor: pointer;
+            transition: all var(--transition-fast);
+            animation: fadeIn 0.3s ease-out both;
+        }
+        .chat-item:hover { background: var(--bg-hover); }
+        .chat-item:active { transform: scale(0.98); }
+
+        .chat-avatar {
+            width: 52px;
+            height: 52px;
+            border-radius: 50%;
+            flex-shrink: 0;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            font-weight: 700;
+            font-size: 18px;
+            color: white;
+            position: relative;
+        }
+        .chat-avatar .online-dot {
+            position: absolute;
+            bottom: 1px;
+            right: 1px;
+            width: 14px;
+            height: 14px;
+            background: var(--accent-green);
+            border-radius: 50%;
+            border: 3px solid var(--bg-secondary);
+        }
+
+        .chat-info { flex: 1; min-width: 0; }
+        .chat-name {
+            font-weight: 600;
+            font-size: 15px;
+            color: var(--text-primary);
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+        .chat-preview {
+            font-size: 13px;
+            color: var(--text-secondary);
+            margin-top: 3px;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            display: flex;
+            align-items: center;
+            gap: 4px;
+        }
+        .chat-preview .check { color: var(--accent-blue); font-size: 11px; }
+
+        .chat-meta {
+            display: flex;
+            flex-direction: column;
+            align-items: flex-end;
+            gap: 6px;
+            flex-shrink: 0;
+        }
+        .chat-time { font-size: 11px; color: var(--text-tertiary); }
+        .chat-badge {
+            min-width: 20px;
+            height: 20px;
+            padding: 0 6px;
+            background: var(--accent-purple);
+            border-radius: var(--radius-full);
+            font-size: 11px;
+            font-weight: 700;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            color: white;
+        }
+
+        /* ═══════ CHAT VIEW ═══════ */
+        #chat-view {
+            background: var(--bg-primary);
+        }
+        .chat-view-header {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            padding: 0 16px 12px;
+            flex-shrink: 0;
+        }
+        .back-btn {
+            width: 36px;
+            height: 36px;
+            border-radius: 50%;
+            background: var(--bg-tertiary);
+            border: none;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            cursor: pointer;
+            color: var(--text-secondary);
+            transition: all var(--transition-fast);
+        }
+        .back-btn:hover { background: var(--bg-hover); color: var(--accent-purple); }
+        .back-btn svg { width: 18px; height: 18px; }
+        .chat-view-avatar {
+            width: 40px;
+            height: 40px;
+            border-radius: 50%;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            font-weight: 700;
+            font-size: 16px;
+            color: white;
+            flex-shrink: 0;
+        }
+        .chat-view-info { flex: 1; }
+        .chat-view-name { font-weight: 600; font-size: 16px; }
+        .chat-view-status { font-size: 12px; color: var(--accent-green); }
+
+        .messages-area {
+            flex: 1;
+            overflow-y: auto;
+            padding: 8px 16px;
+            display: flex;
+            flex-direction: column;
+            gap: 6px;
+        }
+        .messages-area::-webkit-scrollbar { width: 3px; }
+        .messages-area::-webkit-scrollbar-thumb { background: var(--border-subtle); border-radius: 3px; }
+
+        .msg-group {
+            display: flex;
+            flex-direction: column;
+            gap: 3px;
+        }
+
+        .message {
+            max-width: 80%;
+            padding: 10px 14px;
+            border-radius: 18px;
+            font-size: 14px;
+            line-height: 1.45;
+            animation: fadeIn 0.25s ease-out;
+            position: relative;
+        }
+        .message.sent {
+            align-self: flex-end;
+            background: var(--gradient-primary);
+            color: white;
+            border-bottom-right-radius: 6px;
+        }
+        .message.received {
+            align-self: flex-start;
+            background: var(--bg-tertiary);
+            color: var(--text-primary);
+            border-bottom-left-radius: 6px;
+        }
+        .message .msg-time {
+            font-size: 10px;
+            opacity: 0.6;
+            margin-top: 4px;
+            display: flex;
+            align-items: center;
+            gap: 4px;
+            justify-content: flex-end;
+        }
+        .message.sent .msg-time { color: rgba(255,255,255,0.7); }
+        .msg-date-separator {
+            text-align: center;
+            font-size: 11px;
+            color: var(--text-tertiary);
+            padding: 8px 0;
+        }
+
+        .typing-indicator {
+            display: none;
+            align-self: flex-start;
+            padding: 12px 18px;
+            background: var(--bg-tertiary);
+            border-radius: 18px 18px 18px 6px;
+            gap: 5px;
+        }
+        .typing-indicator.visible { display: flex; }
+        .typing-dot {
+            width: 7px;
+            height: 7px;
+            background: var(--text-secondary);
+            border-radius: 50%;
+        }
+        .typing-dot:nth-child(1) { animation: typing 1.4s 0s infinite; }
+        .typing-dot:nth-child(2) { animation: typing 1.4s 0.2s infinite; }
+        .typing-dot:nth-child(3) { animation: typing 1.4s 0.4s infinite; }
+
+        /* Chat input bar */
+        .chat-input-bar {
+            display: flex;
+            align-items: flex-end;
+            gap: 8px;
+            padding: 10px 16px;
+            background: var(--bg-secondary);
+            border-top: 1px solid var(--border-subtle);
+            flex-shrink: 0;
+        }
+        .chat-input-actions {
+            display: flex;
+            gap: 4px;
+        }
+        .chat-input-actions button {
+            width: 36px;
+            height: 36px;
+            border-radius: 50%;
+            background: none;
+            border: none;
+            color: var(--text-tertiary);
+            cursor: pointer;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            transition: all var(--transition-fast);
+        }
+        .chat-input-actions button:hover { color: var(--accent-purple); }
+        .chat-input-actions button svg { width: 20px; height: 20px; }
+        .chat-input-field {
+            flex: 1;
+            padding: 10px 16px;
+            background: var(--bg-tertiary);
+            border: 1px solid var(--border-subtle);
+            border-radius: 22px;
+            color: var(--text-primary);
+            font-size: 14px;
+            outline: none;
+            resize: none;
+            max-height: 100px;
+            min-height: 40px;
+            line-height: 1.4;
+            font-family: inherit;
+        }
+        .chat-input-field::placeholder { color: var(--text-tertiary); }
+        .send-btn {
+            width: 40px;
+            height: 40px;
+            border-radius: 50%;
+            background: var(--gradient-primary);
+            border: none;
+            color: white;
+            cursor: pointer;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            transition: all var(--transition-fast);
+            flex-shrink: 0;
+        }
+        .send-btn:hover { transform: scale(1.05); box-shadow: var(--shadow-glow); }
+        .send-btn:active { transform: scale(0.95); }
+        .send-btn svg { width: 18px; height: 18px; }
+
+        /* ═══════ CONTACTS TAB ═══════ */
+        .section-title {
+            font-size: 13px;
+            font-weight: 700;
+            color: var(--text-tertiary);
+            text-transform: uppercase;
+            letter-spacing: 1px;
+            padding: 12px 20px 6px;
+        }
+        .contacts-list {
+            flex: 1;
+            overflow-y: auto;
+            padding: 0 12px;
+        }
+        .contact-item {
+            display: flex;
+            align-items: center;
+            gap: 14px;
+            padding: 12px;
+            border-radius: var(--radius-md);
+            cursor: pointer;
+            transition: all var(--transition-fast);
+        }
+        .contact-item:hover { background: var(--bg-hover); }
+        .contact-avatar {
+            width: 44px;
+            height: 44px;
+            border-radius: 50%;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            font-weight: 700;
+            font-size: 16px;
+            color: white;
+            flex-shrink: 0;
+        }
+        .contact-info { flex: 1; }
+        .contact-name { font-weight: 600; font-size: 15px; }
+        .contact-status { font-size: 12px; color: var(--text-secondary); margin-top: 2px; }
+        .contact-action {
+            width: 36px;
+            height: 36px;
+            border-radius: 50%;
+            background: var(--bg-tertiary);
+            border: none;
+            color: var(--accent-purple);
+            cursor: pointer;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            transition: all var(--transition-fast);
+        }
+        .contact-action:hover { background: var(--accent-purple); color: white; }
+        .contact-action svg { width: 16px; height: 16px; }
+
+        /* ═══════ WALLET TAB ═══════ */
+        .wallet-header {
+            text-align: center;
+            padding: 20px 24px 24px;
+        }
+        .wallet-card {
+            background: var(--gradient-primary);
+            border-radius: var(--radius-xl);
+            padding: 28px 24px;
+            position: relative;
+            overflow: hidden;
+        }
+        .wallet-card::before {
+            content: '';
+            position: absolute;
+            top: -50%;
+            right: -30%;
+            width: 200px;
+            height: 200px;
+            background: rgba(255,255,255,0.08);
+            border-radius: 50%;
+        }
+        .wallet-card::after {
+            content: '';
+            position: absolute;
+            bottom: -40%;
+            left: -20%;
+            width: 180px;
+            height: 180px;
+            background: rgba(255,255,255,0.05);
+            border-radius: 50%;
+        }
+        .wallet-label {
+            font-size: 13px;
+            color: rgba(255,255,255,0.7);
+            font-weight: 500;
+        }
+        .wallet-balance {
+            font-family: 'Outfit', sans-serif;
+            font-size: 38px;
+            font-weight: 800;
+            color: white;
+            margin-top: 6px;
+        }
+        .wallet-balance .currency { font-size: 20px; font-weight: 600; opacity: 0.8; }
+        .wallet-id {
+            font-size: 12px;
+            color: rgba(255,255,255,0.5);
+            margin-top: 12px;
+            font-family: monospace;
+        }
+        .kente-strip {
+            height: 4px;
+            background: var(--gradient-kente);
+            background-size: 200% 100%;
+            animation: kenteShine 3s linear infinite;
+            border-radius: 2px;
+            margin-top: 16px;
+        }
+
+        .wallet-actions {
+            display: grid;
+            grid-template-columns: repeat(4, 1fr);
+            gap: 10px;
+            padding: 16px 20px;
+        }
+        .wallet-action-btn {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 8px;
+            padding: 14px 8px;
+            background: var(--bg-tertiary);
+            border: 1px solid var(--border-subtle);
+            border-radius: var(--radius-lg);
+            cursor: pointer;
+            transition: all var(--transition-fast);
+        }
+        .wallet-action-btn:hover { background: var(--bg-hover); border-color: var(--accent-purple); transform: translateY(-2px); }
+        .wallet-action-icon {
+            width: 40px;
+            height: 40px;
+            border-radius: 50%;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+        }
+        .wallet-action-icon svg { width: 20px; height: 20px; color: white; }
+        .wallet-action-btn span {
+            font-size: 11px;
+            font-weight: 600;
+            color: var(--text-secondary);
+        }
+
+        .transactions-section {
+            flex: 1;
+            overflow-y: auto;
+            padding: 0 16px;
+        }
+        .transaction-item {
+            display: flex;
+            align-items: center;
+            gap: 14px;
+            padding: 14px 8px;
+            border-bottom: 1px solid var(--border-subtle);
+        }
+        .tx-icon {
+            width: 40px;
+            height: 40px;
+            border-radius: 50%;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+        }
+        .tx-icon svg { width: 18px; height: 18px; }
+        .tx-info { flex: 1; }
+        .tx-name { font-weight: 600; font-size: 14px; }
+        .tx-date { font-size: 12px; color: var(--text-tertiary); margin-top: 2px; }
+        .tx-amount { font-weight: 700; font-size: 15px; }
+        .tx-amount.credit { color: var(--accent-green); }
+        .tx-amount.debit { color: var(--accent-red); }
+
+        /* ═══════ PROFILE TAB ═══════ */
+        .profile-header {
+            text-align: center;
+            padding: 20px 24px;
+        }
+        .profile-avatar-large {
+            width: 90px;
+            height: 90px;
+            border-radius: 50%;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            font-weight: 800;
+            font-size: 32px;
+            color: white;
+            margin: 0 auto;
+            background: var(--gradient-primary);
+            border: 3px solid rgba(139, 92, 246, 0.3);
+        }
+        .profile-name {
+            font-family: 'Outfit', sans-serif;
+            font-size: 22px;
+            font-weight: 700;
+            margin-top: 14px;
+        }
+        .profile-phone {
+            font-size: 14px;
+            color: var(--text-secondary);
+            margin-top: 4px;
+        }
+        .profile-status-msg {
+            font-size: 13px;
+            color: var(--text-accent);
+            margin-top: 8px;
+            font-style: italic;
+        }
+
+        .profile-menu {
+            flex: 1;
+            overflow-y: auto;
+            padding: 0 16px;
+        }
+        .profile-menu-group {
+            margin-bottom: 16px;
+        }
+        .profile-menu-item {
+            display: flex;
+            align-items: center;
+            gap: 14px;
+            padding: 14px 12px;
+            border-radius: var(--radius-md);
+            cursor: pointer;
+            transition: all var(--transition-fast);
+        }
+        .profile-menu-item:hover { background: var(--bg-hover); }
+        .menu-icon {
+            width: 38px;
+            height: 38px;
+            border-radius: var(--radius-sm);
+            display: flex;
+            justify-content: center;
+            align-items: center;
+        }
+        .menu-icon svg { width: 18px; height: 18px; color: white; }
+        .menu-text { flex: 1; }
+        .menu-label { font-weight: 600; font-size: 14px; }
+        .menu-desc { font-size: 12px; color: var(--text-tertiary); margin-top: 2px; }
+        .menu-chevron { color: var(--text-tertiary); }
+        .menu-chevron svg { width: 16px; height: 16px; }
+
+        .version-info {
+            text-align: center;
+            padding: 12px;
+            font-size: 11px;
+            color: var(--text-tertiary);
+        }
+
+        /* ═══════ FAB ═══════ */
+        .fab {
+            position: absolute;
+            bottom: 86px;
+            right: 20px;
+            width: 52px;
+            height: 52px;
+            border-radius: 50%;
+            background: var(--gradient-primary);
+            border: none;
+            color: white;
+            cursor: pointer;
+            box-shadow: var(--shadow-md), var(--shadow-glow);
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            transition: all var(--transition-fast);
+            z-index: 10;
+        }
+        .fab:hover { transform: scale(1.1); }
+        .fab svg { width: 24px; height: 24px; }
+
+        /* ═══════ TOAST ═══════ */
+        .toast {
+            position: absolute;
+            bottom: 90px;
+            left: 50%;
+            transform: translateX(-50%) translateY(100px);
+            background: var(--bg-tertiary);
+            border: 1px solid var(--border-subtle);
+            border-radius: var(--radius-full);
+            padding: 10px 20px;
+            font-size: 13px;
+            font-weight: 500;
+            color: var(--text-primary);
+            z-index: 200;
+            opacity: 0;
+            transition: all 0.3s ease;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            white-space: nowrap;
+        }
+        .toast.visible { opacity: 1; transform: translateX(-50%) translateY(0); }
+        .toast-icon { font-size: 16px; }
+
+        /* ═══════ SCROLLBAR GLOBAL ═══════ */
+        ::-webkit-scrollbar { width: 3px; }
+        ::-webkit-scrollbar-track { background: transparent; }
+        ::-webkit-scrollbar-thumb { background: rgba(148, 163, 184, 0.15); border-radius: 3px; }
+
+        /* Utility: stagger animations */
+        .stagger > *:nth-child(1) { animation-delay: 0.05s; }
+        .stagger > *:nth-child(2) { animation-delay: 0.1s; }
+        .stagger > *:nth-child(3) { animation-delay: 0.15s; }
+        .stagger > *:nth-child(4) { animation-delay: 0.2s; }
+        .stagger > *:nth-child(5) { animation-delay: 0.25s; }
+        .stagger > *:nth-child(6) { animation-delay: 0.3s; }
+        .stagger > *:nth-child(7) { animation-delay: 0.35s; }
+        .stagger > *:nth-child(8) { animation-delay: 0.4s; }
+
+        /* ═══════ RESPONSIVE ═══════ */
+        @media (max-width: 420px) {
+            body { align-items: flex-start; }
+            .phone-frame {
+                width: 100vw;
+                height: 100vh;
+                border-radius: 0;
+                border: none;
+            }
+            .phone-frame::before { display: none; }
+        }
+    </style>
+</head>
+<body>
+
+<div class="phone-frame" id="app">
+    <!-- Status Bar -->
+    <div class="status-bar">
+        <span class="time" id="status-time">23:52</span>
+        <div class="icons">
+            <svg viewBox="0 0 24 24"><path d="M1 9l2 2c4.97-4.97 13.03-4.97 18 0l2-2C16.93 2.93 7.08 2.93 1 9zm8 8l3 3 3-3a4.237 4.237 0 0 0-6 0zm-4-4l2 2a7.074 7.074 0 0 1 10 0l2-2C15.14 9.14 8.87 9.14 5 13z"/></svg>
+            <svg viewBox="0 0 24 24"><path d="M2 22h20V2z M12 12V2.5C9.2 2.5 6.6 3.7 4.8 5.8L6.3 7.2C7.7 5.6 9.7 4.5 12 4.5V12H2.5c0 2.8 1.2 5.4 3.3 7.2L7.2 17.7C5.6 16.3 4.5 14.3 4.5 12H12z"/></svg>
+            <svg viewBox="0 0 24 24"><path d="M15.67 4H14V2h-4v2H8.33C7.6 4 7 4.6 7 5.33v15.33C7 21.4 7.6 22 8.33 22h7.33c.74 0 1.34-.6 1.34-1.33V5.33C17 4.6 16.4 4 15.67 4z"/></svg>
+        </div>
+    </div>
+
+    <!-- ══════════ SPLASH ══════════ -->
+    <div class="screen active" id="splash-screen">
+        <img class="splash-logo" id="splash-logo" alt="MÏÏghO Logo">
+        <div class="splash-title">MÏÏghO</div>
+        <div class="splash-subtitle">Connecting Africa</div>
+        <div class="splash-loader"><div class="splash-loader-bar" id="splash-bar"></div></div>
+    </div>
+
+    <!-- ══════════ AUTH - PHONE ══════════ -->
+    <div class="screen" id="auth-screen">
+        <div class="auth-header">
+            <img class="auth-logo-small" id="auth-logo" alt="MÏÏghO">
+            <h1 class="auth-title">Bienvenue 👋</h1>
+            <p class="auth-desc">Entrez votre numéro de téléphone pour commencer</p>
+        </div>
+        <div class="auth-form">
+            <div class="input-group">
+                <label>Numéro de téléphone</label>
+                <div class="input-row">
+                    <input type="text" class="country-code" value="+243" id="country-code" readonly>
+                    <input type="tel" class="input-field" placeholder="812 345 678" id="phone-input" maxlength="12">
+                </div>
+            </div>
+            <button class="btn-primary" id="btn-send-otp" onclick="sendOTP()">Recevoir le code SMS</button>
+        </div>
+        <div class="auth-footer">
+            En continuant, vous acceptez nos<br>
+            <a href="#">Conditions d'utilisation</a> et <a href="#">Politique de confidentialité</a>
+        </div>
+    </div>
+
+    <!-- ══════════ AUTH - OTP ══════════ -->
+    <div class="screen" id="otp-screen">
+        <div class="auth-header">
+            <img class="auth-logo-small" id="otp-logo" alt="MÏÏghO">
+            <h1 class="auth-title">Vérification</h1>
+            <p class="auth-desc" id="otp-desc">Code envoyé au +243 812 345 678</p>
+        </div>
+        <div class="auth-form">
+            <div class="otp-inputs" id="otp-inputs">
+                <input type="text" class="otp-input" maxlength="1" data-idx="0">
+                <input type="text" class="otp-input" maxlength="1" data-idx="1">
+                <input type="text" class="otp-input" maxlength="1" data-idx="2">
+                <input type="text" class="otp-input" maxlength="1" data-idx="3">
+                <input type="text" class="otp-input" maxlength="1" data-idx="4">
+                <input type="text" class="otp-input" maxlength="1" data-idx="5">
+            </div>
+            <div class="otp-timer">Renvoyer dans <span id="otp-countdown">02:00</span></div>
+            <div class="otp-hint">💡 Démo : tapez n'importe quel code à 6 chiffres</div>
+            <button class="btn-primary" id="btn-verify-otp" onclick="verifyOTP()" disabled>Vérifier</button>
+        </div>
+    </div>
+
+    <!-- ══════════ PROFILE SETUP ══════════ -->
+    <div class="screen" id="profile-setup">
+        <div class="auth-header">
+            <h1 class="auth-title">Créez votre profil</h1>
+            <p class="auth-desc">Comment voulez-vous apparaître sur MÏÏghO ?</p>
+        </div>
+        <div class="avatar-upload" id="avatar-upload" onclick="pickAvatar()">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="8" r="4"/><path d="M20 21c0-4.4-3.6-8-8-8s-8 3.6-8 8"/></svg>
+        </div>
+        <div class="auth-form" style="margin-top: 24px">
+            <div class="input-group">
+                <label>Prénom</label>
+                <input type="text" class="input-field" placeholder="Prénom" id="first-name" value="Ayo">
+            </div>
+            <div class="input-group">
+                <label>Nom</label>
+                <input type="text" class="input-field" placeholder="Nom" id="last-name" value="Ndala">
+            </div>
+            <div class="input-group">
+                <label>Message de statut</label>
+                <input type="text" class="input-field" placeholder="Que faites-vous ?" id="status-msg" value="🌍 Disponible sur MÏÏghO">
+            </div>
+            <button class="btn-primary" onclick="completeProfile()">Commencer</button>
+        </div>
+    </div>
+
+    <!-- ══════════ MAIN APP ══════════ -->
+    <div class="screen" id="main-app">
+        <div class="app-header">
+            <div class="app-logo">MÏÏghO</div>
+            <div class="header-actions">
+                <button class="header-btn" style="position:relative" title="Notifications">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/></svg>
+                    <span class="badge">3</span>
+                </button>
+                <button class="header-btn" title="Recherche">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+                </button>
+            </div>
+        </div>
+
+        <!-- Tab Content -->
+        <div class="tab-content">
+            <!-- ──── CHATS TAB ──── -->
+            <div class="tab-panel active" id="panel-chats">
+                <div class="search-bar">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+                    <input type="text" placeholder="Rechercher une conversation..." id="search-chats" oninput="filterChats()">
+                </div>
+                <div class="chat-list stagger" id="chat-list"></div>
+                <button class="fab" onclick="showToast('✨', 'Nouvelle conversation bientôt disponible !')" title="Nouvelle conversation">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/><line x1="12" y1="8" x2="12" y2="14"/><line x1="9" y1="11" x2="15" y2="11"/></svg>
+                </button>
+            </div>
+
+            <!-- ──── CONTACTS TAB ──── -->
+            <div class="tab-panel" id="panel-contacts">
+                <div class="search-bar">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+                    <input type="text" placeholder="Rechercher un contact...">
+                </div>
+                <div class="section-title">⭐ Favoris</div>
+                <div class="contacts-list stagger" id="favorites-list"></div>
+                <div class="section-title">Tous les contacts</div>
+                <div class="contacts-list stagger" id="contacts-list"></div>
+            </div>
+
+            <!-- ──── WALLET TAB ──── -->
+            <div class="tab-panel" id="panel-wallet">
+                <div class="wallet-header">
+                    <div class="wallet-card">
+                        <div class="wallet-label">Solde disponible</div>
+                        <div class="wallet-balance"><span class="currency">CDF </span><span id="balance-amount">125,750</span></div>
+                        <div class="wallet-id">ID: MÏÏ-2026-0823-NDALA</div>
+                        <div class="kente-strip"></div>
+                    </div>
+                </div>
+                <div class="wallet-actions">
+                    <div class="wallet-action-btn" onclick="showToast('📤', 'Envoyer — bientôt disponible')">
+                        <div class="wallet-action-icon" style="background: var(--gradient-primary)">
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 19V5M5 12l7-7 7 7"/></svg>
+                        </div>
+                        <span>Envoyer</span>
+                    </div>
+                    <div class="wallet-action-btn" onclick="showToast('📥', 'Recevoir — bientôt disponible')">
+                        <div class="wallet-action-icon" style="background: var(--gradient-success)">
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 5v14M19 12l-7 7-7-7"/></svg>
+                        </div>
+                        <span>Recevoir</span>
+                    </div>
+                    <div class="wallet-action-btn" onclick="showToast('💳', 'Top Up — bientôt disponible')">
+                        <div class="wallet-action-icon" style="background: var(--gradient-gold)">
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="1" y="4" width="22" height="16" rx="2" ry="2"/><line x1="1" y1="10" x2="23" y2="10"/></svg>
+                        </div>
+                        <span>Top Up</span>
+                    </div>
+                    <div class="wallet-action-btn" onclick="showToast('📊', 'Historique — bientôt disponible')">
+                        <div class="wallet-action-icon" style="background: linear-gradient(135deg, #3b82f6, #6366f1)">
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="20" x2="12" y2="10"/><line x1="18" y1="20" x2="18" y2="4"/><line x1="6" y1="20" x2="6" y2="16"/></svg>
+                        </div>
+                        <span>Stats</span>
+                    </div>
+                </div>
+                <div class="section-title">Transactions récentes</div>
+                <div class="transactions-section" id="transactions-list"></div>
+            </div>
+
+            <!-- ──── PROFILE TAB ──── -->
+            <div class="tab-panel" id="panel-profile">
+                <div class="profile-header">
+                    <div class="profile-avatar-large" id="profile-avatar-lg">AN</div>
+                    <div class="profile-name" id="profile-name-display">Ayo Ndala</div>
+                    <div class="profile-phone" id="profile-phone-display">+243 812 345 678</div>
+                    <div class="profile-status-msg" id="profile-status-display">🌍 Disponible sur MÏÏghO</div>
+                </div>
+                <div class="profile-menu">
+                    <div class="profile-menu-group">
+                        <div class="profile-menu-item" onclick="showToast('👤', 'Modifier profil')">
+                            <div class="menu-icon" style="background: var(--gradient-primary)">
+                                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
+                            </div>
+                            <div class="menu-text">
+                                <div class="menu-label">Mon Profil</div>
+                                <div class="menu-desc">Photo, nom, statut</div>
+                            </div>
+                            <div class="menu-chevron"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="9 18 15 12 9 6"/></svg></div>
+                        </div>
+                        <div class="profile-menu-item" onclick="showToast('🔒', 'Confidentialité')">
+                            <div class="menu-icon" style="background: var(--gradient-success)">
+                                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
+                            </div>
+                            <div class="menu-text">
+                                <div class="menu-label">Confidentialité</div>
+                                <div class="menu-desc">Dernière connexion, photos de profil</div>
+                            </div>
+                            <div class="menu-chevron"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="9 18 15 12 9 6"/></svg></div>
+                        </div>
+                        <div class="profile-menu-item" onclick="showToast('🔔', 'Notifications')">
+                            <div class="menu-icon" style="background: var(--gradient-gold)">
+                                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/></svg>
+                            </div>
+                            <div class="menu-text">
+                                <div class="menu-label">Notifications</div>
+                                <div class="menu-desc">Sons, vibrations, badges</div>
+                            </div>
+                            <div class="menu-chevron"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="9 18 15 12 9 6"/></svg></div>
+                        </div>
+                    </div>
+                    <div class="profile-menu-group">
+                        <div class="profile-menu-item" onclick="showToast('🌐', 'Langues')">
+                            <div class="menu-icon" style="background: linear-gradient(135deg, #3b82f6, #6366f1)">
+                                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="2" y1="12" x2="22" y2="12"/><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/></svg>
+                            </div>
+                            <div class="menu-text">
+                                <div class="menu-label">Langue</div>
+                                <div class="menu-desc">Français</div>
+                            </div>
+                            <div class="menu-chevron"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="9 18 15 12 9 6"/></svg></div>
+                        </div>
+                        <div class="profile-menu-item" onclick="showToast('💾', 'Stockage et données')">
+                            <div class="menu-icon" style="background: linear-gradient(135deg, #059669, #0d9488)">
+                                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/></svg>
+                            </div>
+                            <div class="menu-text">
+                                <div class="menu-label">Stockage & Données</div>
+                                <div class="menu-desc">Gérer l'utilisation réseau</div>
+                            </div>
+                            <div class="menu-chevron"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="9 18 15 12 9 6"/></svg></div>
+                        </div>
+                    </div>
+                    <div class="profile-menu-group">
+                        <div class="profile-menu-item" onclick="showToast('❓', 'Aide')">
+                            <div class="menu-icon" style="background: linear-gradient(135deg, #f59e0b, #f97316)">
+                                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
+                            </div>
+                            <div class="menu-text">
+                                <div class="menu-label">Aide</div>
+                                <div class="menu-desc">FAQ, nous contacter</div>
+                            </div>
+                            <div class="menu-chevron"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="9 18 15 12 9 6"/></svg></div>
+                        </div>
+                    </div>
+                    <div class="version-info">MÏÏghO v1.0.0-mvp • Build 2026.08.23</div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Bottom Tabs -->
+        <div class="bottom-tabs">
+            <button class="tab-btn active" onclick="switchTab('chats')" id="tab-chats">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
+                <span>Chats</span>
+                <span class="tab-badge" id="chat-tab-badge">5</span>
+            </button>
+            <button class="tab-btn" onclick="switchTab('contacts')" id="tab-contacts">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
+                <span>Contacts</span>
+            </button>
+            <button class="tab-btn" onclick="switchTab('wallet')" id="tab-wallet">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="1" y="4" width="22" height="16" rx="2" ry="2"/><line x1="1" y1="10" x2="23" y2="10"/></svg>
+                <span>Wallet</span>
+            </button>
+            <button class="tab-btn" onclick="switchTab('profile')" id="tab-profile">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
+                <span>Profil</span>
+            </button>
+        </div>
+    </div>
+
+    <!-- ══════════ CHAT VIEW ══════════ -->
+    <div class="screen" id="chat-view">
+        <div class="chat-view-header">
+            <button class="back-btn" onclick="exitChat()">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="15 18 9 12 15 6"/></svg>
+            </button>
+            <div class="chat-view-avatar" id="cv-avatar"></div>
+            <div class="chat-view-info">
+                <div class="chat-view-name" id="cv-name"></div>
+                <div class="chat-view-status" id="cv-status">en ligne</div>
+            </div>
+            <button class="header-btn" title="Appel">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72c.127.96.361 1.903.7 2.81a2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45c.907.339 1.85.573 2.81.7A2 2 0 0 1 22 16.92z"/></svg>
+            </button>
+            <button class="header-btn" title="Vidéo">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="23 7 16 12 23 17 23 7"/><rect x="1" y="5" width="15" height="14" rx="2" ry="2"/></svg>
+            </button>
+        </div>
+
+        <div class="messages-area" id="messages-area"></div>
+
+        <div class="typing-indicator" id="typing-indicator">
+            <div class="typing-dot"></div>
+            <div class="typing-dot"></div>
+            <div class="typing-dot"></div>
+        </div>
+
+        <div class="chat-input-bar">
+            <div class="chat-input-actions">
+                <button title="Pièce jointe" onclick="showToast('📎', 'Pièces jointes — bientôt disponible')">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21.44 11.05l-9.19 9.19a6 6 0 0 1-8.49-8.49l9.19-9.19a4 4 0 0 1 5.66 5.66l-9.2 9.19a2 2 0 0 1-2.83-2.83l8.49-8.48"/></svg>
+                </button>
+                <button title="Vocal" onclick="showToast('🎤', 'Message vocal — bientôt disponible')">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2"/><line x1="12" y1="19" x2="12" y2="23"/></svg>
+                </button>
+            </div>
+            <textarea class="chat-input-field" id="chat-input" placeholder="Tapez un message..." rows="1" onkeydown="handleChatKey(event)"></textarea>
+            <button class="send-btn" onclick="sendMessage()">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg>
+            </button>
+        </div>
+    </div>
+
+    <!-- Toast -->
+    <div class="toast" id="toast">
+        <span class="toast-icon" id="toast-icon">✨</span>
+        <span id="toast-text">Message</span>
+    </div>
+</div>
+
+<script>
+    // ═══════════════════════════════════════════════
+    //  MÏÏghO DEMO — Application Logic
+    // ═══════════════════════════════════════════════
+
+    // Logo path
+    const LOGO_PATH = '../demo/miigho_logo.jpg';
+
+    // ── Data: Conversations ──
+    const AVATAR_COLORS = [
+        'linear-gradient(135deg, #6b21a8, #a855f7)',
+        'linear-gradient(135deg, #059669, #10b981)',
+        'linear-gradient(135deg, #ea580c, #f59e0b)',
+        'linear-gradient(135deg, #3b82f6, #6366f1)',
+        'linear-gradient(135deg, #dc2626, #f97316)',
+        'linear-gradient(135deg, #0891b2, #06b6d4)',
+        'linear-gradient(135deg, #7c3aed, #c084fc)',
+        'linear-gradient(135deg, #b91c1c, #e11d48)',
+    ];
+
+    const conversations = [
+        { id: 1, name: 'Amina Diallo', initials: 'AD', color: 0, preview: 'On se voit demain à Gombe ? 🏙️', time: '23:48', unread: 2, online: true, messages: [
+            { text: 'Salut Ayo ! Tu es libre demain ?', sent: false, time: '23:30' },
+            { text: 'Oui, je suis dispo après 14h 👍', sent: true, time: '23:32' },
+            { text: 'Parfait ! On se retrouve au café Mokonzi ?', sent: false, time: '23:35' },
+            { text: 'Ça marche, je serai là à 14h30', sent: true, time: '23:37' },
+            { text: 'On se voit demain à Gombe ? 🏙️', sent: false, time: '23:48' },
+        ]},
+        { id: 2, name: 'Famille Ndala 🏠', initials: '👨‍👩‍👧‍👦', color: 1, preview: 'Maman : N\'oubliez pas dimanche !', time: '23:30', unread: 5, online: false, isGroup: true, messages: [
+            { text: 'Bonjour tout le monde ! 🎉', sent: false, time: '22:00', sender: 'Papa' },
+            { text: 'Qui vient au repas dimanche ?', sent: false, time: '22:05', sender: 'Maman' },
+            { text: 'Moi je serai là !', sent: true, time: '22:10' },
+            { text: 'Moi aussi avec les enfants', sent: false, time: '22:15', sender: 'Sœur Keza' },
+            { text: 'N\'oubliez pas dimanche !', sent: false, time: '23:30', sender: 'Maman' },
+        ]},
+        { id: 3, name: 'Kwame Asante', initials: 'KA', color: 2, preview: '✓✓ Le code est déployé 🚀', time: '22:15', unread: 0, online: true, messages: [
+            { text: 'Hey Kwame, tu as pushé le fix ?', sent: true, time: '21:50' },
+            { text: 'Oui ! Tout est sur main', sent: false, time: '22:00' },
+            { text: 'CI/CD est en train de build...', sent: false, time: '22:05' },
+            { text: 'Le code est déployé 🚀', sent: true, time: '22:15' },
+        ]},
+        { id: 4, name: 'Fatou Bâ', initials: 'FB', color: 3, preview: '🎵 Écoute cette playlist !', time: '21:00', unread: 1, online: false, messages: [
+            { text: 'Tu connais Burna Boy ?', sent: false, time: '20:30' },
+            { text: 'Bien sûr ! Last Last est mon son', sent: true, time: '20:35' },
+            { text: '🎵 Écoute cette playlist !', sent: false, time: '21:00' },
+        ]},
+        { id: 5, name: 'MÏÏghO Team 🛠️', initials: '⚡', color: 4, preview: 'Sprint planning demain 09h', time: '19:30', unread: 0, online: false, isGroup: true, messages: [
+            { text: 'Rappel : Sprint planning demain à 9h', sent: false, time: '19:00', sender: 'PM' },
+            { text: 'OK, j\'ai préparé le backlog', sent: true, time: '19:15' },
+            { text: 'Sprint planning demain 09h', sent: false, time: '19:30', sender: 'PM' },
+        ]},
+        { id: 6, name: 'Ngozi Okafor', initials: 'NO', color: 5, preview: '📸 Photo du sunset à Lagos', time: '18:45', unread: 3, online: true, messages: [
+            { text: 'Tu as vu le coucher de soleil ?', sent: false, time: '18:30' },
+            { text: '📸 Photo du sunset à Lagos', sent: false, time: '18:45' },
+        ]},
+        { id: 7, name: 'Moussa Keita', initials: 'MK', color: 6, preview: 'Merci frère 🙏', time: '16:20', unread: 0, online: false, messages: [
+            { text: 'Tu peux m\'envoyer le doc ?', sent: false, time: '15:00' },
+            { text: 'Envoyé par mail !', sent: true, time: '16:00' },
+            { text: 'Merci frère 🙏', sent: false, time: '16:20' },
+        ]},
+    ];
+
+    const contacts = [
+        { name: 'Amina Diallo', phone: '+243 811 222 333', initials: 'AD', color: 0, status: 'En ligne', favorite: true },
+        { name: 'Kwame Asante', phone: '+233 245 678 901', initials: 'KA', color: 2, status: '🖥️ Coding...', favorite: true },
+        { name: 'Ngozi Okafor', phone: '+234 801 234 567', initials: 'NO', color: 5, status: 'En ligne', favorite: true },
+        { name: 'Fatou Bâ', phone: '+221 77 123 4567', initials: 'FB', color: 3, status: 'Vu à 21:00', favorite: false },
+        { name: 'Moussa Keita', phone: '+223 76 543 210', initials: 'MK', color: 6, status: 'Vu à 16:20', favorite: false },
+        { name: 'Zara Mensah', phone: '+233 200 111 222', initials: 'ZM', color: 7, status: 'Ne pas déranger', favorite: false },
+        { name: 'Ibrahim Traoré', phone: '+226 70 123 456', initials: 'IT', color: 1, status: '🌍 En voyage', favorite: false },
+        { name: 'Chiamaka Eze', phone: '+234 905 678 123', initials: 'CE', color: 4, status: 'En ligne', favorite: false },
+    ];
+
+    const transactions = [
+        { name: 'Amina Diallo', type: 'Reçu', amount: '+5,000', date: 'Aujourd\'hui, 22:30', credit: true, icon: '📥' },
+        { name: 'Airtel Mobile', type: 'Crédit téléphone', amount: '-2,500', date: 'Aujourd\'hui, 18:00', credit: false, icon: '📱' },
+        { name: 'Kwame Asante', type: 'Envoyé', amount: '-10,000', date: 'Hier, 14:30', credit: false, icon: '📤' },
+        { name: 'Top Up Visa', type: 'Rechargement', amount: '+50,000', date: '21 Août, 09:00', credit: true, icon: '💳' },
+        { name: 'Marché Zando', type: 'Paiement', amount: '-7,250', date: '20 Août, 16:45', credit: false, icon: '🛒' },
+    ];
+
+    // ── State ──
+    let currentChat = null;
+    let userProfile = { firstName: 'Ayo', lastName: 'Ndala', phone: '+243 812 345 678' };
+
+    // ── Clock ──
+    function updateClock() {
+        const now = new Date();
+        document.getElementById('status-time').textContent =
+            now.getHours().toString().padStart(2,'0') + ':' + now.getMinutes().toString().padStart(2,'0');
+    }
+    setInterval(updateClock, 1000);
+    updateClock();
+
+    // ── Splash ──
+    function runSplash() {
+        const bar = document.getElementById('splash-bar');
+        let progress = 0;
+        const interval = setInterval(() => {
+            progress += Math.random() * 15 + 5;
+            if (progress >= 100) {
+                progress = 100;
+                clearInterval(interval);
+                setTimeout(() => showScreen('auth-screen'), 300);
+            }
+            bar.style.width = progress + '%';
+        }, 200);
+    }
+
+    // ── Logo loader ──
+    function loadLogos() {
+        // Try loading the generated logo, fallback to inline SVG placeholder
+        const imgs = document.querySelectorAll('.splash-logo, .auth-logo-small');
+        imgs.forEach(img => {
+            img.onerror = () => {
+                // Create a gradient placeholder
+                img.style.background = 'linear-gradient(135deg, #6b21a8, #a855f7)';
+                img.style.display = 'flex';
+                img.style.justifyContent = 'center';
+                img.style.alignItems = 'center';
+                img.alt = '';
+            };
+            img.src = LOGO_PATH;
+        });
+    }
+
+    // ── Screens ──
+    function showScreen(id, reverse = false) {
+        document.querySelectorAll('.screen').forEach(s => s.classList.remove('active'));
+        const screen = document.getElementById(id);
+        screen.style.animation = reverse ? 'screenInReverse 0.35s ease-out' : 'screenIn 0.35s ease-out';
+        screen.classList.add('active');
+    }
+
+    // ── Auth: Send OTP ──
+    function sendOTP() {
+        const phone = document.getElementById('phone-input').value || '812 345 678';
+        const cc = document.getElementById('country-code').value;
+        document.getElementById('otp-desc').textContent = `Code envoyé au ${cc} ${phone}`;
+        showScreen('otp-screen');
+        startOTPTimer();
+        // Auto-focus first OTP input
+        setTimeout(() => document.querySelector('.otp-input').focus(), 400);
+    }
+
+    // ── OTP Inputs ──
+    document.querySelectorAll('.otp-input').forEach((input, idx, inputs) => {
+        input.addEventListener('input', (e) => {
+            const val = e.target.value.replace(/\D/g, '');
+            e.target.value = val;
+            if (val && idx < inputs.length - 1) inputs[idx + 1].focus();
+            if (val) e.target.classList.add('filled');
+            else e.target.classList.remove('filled');
+
+            // Check all filled
+            const allFilled = [...inputs].every(i => i.value.length === 1);
+            document.getElementById('btn-verify-otp').disabled = !allFilled;
+        });
+        input.addEventListener('keydown', (e) => {
+            if (e.key === 'Backspace' && !e.target.value && idx > 0) {
+                inputs[idx - 1].focus();
+            }
+        });
+        // Paste support
+        input.addEventListener('paste', (e) => {
+            e.preventDefault();
+            const data = e.clipboardData.getData('text').replace(/\D/g, '').slice(0, 6);
+            [...data].forEach((ch, i) => {
+                if (inputs[i]) { inputs[i].value = ch; inputs[i].classList.add('filled'); }
+            });
+            const lastIdx = Math.min(data.length, inputs.length) - 1;
+            if (lastIdx >= 0) inputs[lastIdx].focus();
+            const allFilled = [...inputs].every(i => i.value.length === 1);
+            document.getElementById('btn-verify-otp').disabled = !allFilled;
+        });
+    });
+
+    let otpTimerRef = null;
+    function startOTPTimer() {
+        let seconds = 120;
+        const el = document.getElementById('otp-countdown');
+        clearInterval(otpTimerRef);
+        otpTimerRef = setInterval(() => {
+            seconds--;
+            const m = Math.floor(seconds / 60).toString().padStart(2, '0');
+            const s = (seconds % 60).toString().padStart(2, '0');
+            el.textContent = `${m}:${s}`;
+            if (seconds <= 0) clearInterval(otpTimerRef);
+        }, 1000);
+    }
+
+    function verifyOTP() {
+        showScreen('profile-setup');
+    }
+
+    // ── Profile Setup ──
+    function pickAvatar() {
+        const el = document.getElementById('avatar-upload');
+        el.innerHTML = '<div style="width:100%;height:100%;border-radius:50%;background:var(--gradient-primary);display:flex;justify-content:center;align-items:center;font-size:32px;font-weight:800;color:white">AN</div>';
+    }
+
+    function completeProfile() {
+        userProfile.firstName = document.getElementById('first-name').value || 'Ayo';
+        userProfile.lastName = document.getElementById('last-name').value || 'Ndala';
+        const initials = (userProfile.firstName[0] + userProfile.lastName[0]).toUpperCase();
+        
+        document.getElementById('profile-avatar-lg').textContent = initials;
+        document.getElementById('profile-name-display').textContent = `${userProfile.firstName} ${userProfile.lastName}`;
+        document.getElementById('profile-phone-display').textContent = userProfile.phone;
+        document.getElementById('profile-status-display').textContent = document.getElementById('status-msg').value;
+
+        renderChatList();
+        renderContacts();
+        renderTransactions();
+        showScreen('main-app');
+        showToast('🎉', `Bienvenue ${userProfile.firstName} !`);
+    }
+
+    // ── Tab Switch ──
+    function switchTab(tab) {
+        document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
+        document.getElementById(`tab-${tab}`).classList.add('active');
+        document.querySelectorAll('.tab-panel').forEach(p => p.classList.remove('active'));
+        document.getElementById(`panel-${tab}`).classList.add('active');
+    }
+
+    // ── Render Chat List ──
+    function renderChatList(filter = '') {
+        const list = document.getElementById('chat-list');
+        const filtered = conversations.filter(c => c.name.toLowerCase().includes(filter.toLowerCase()));
+        list.innerHTML = filtered.map((c, i) => `
+            <div class="chat-item" onclick="openChat(${c.id})" style="animation-delay: ${i * 0.05}s">
+                <div class="chat-avatar" style="background: ${AVATAR_COLORS[c.color]}">
+                    ${c.initials}
+                    ${c.online ? '<div class="online-dot"></div>' : ''}
+                </div>
+                <div class="chat-info">
+                    <div class="chat-name">${c.name}</div>
+                    <div class="chat-preview">
+                        ${c.unread === 0 && !c.isGroup ? '<span class="check">✓✓</span>' : ''}
+                        ${c.preview}
+                    </div>
+                </div>
+                <div class="chat-meta">
+                    <span class="chat-time">${c.time}</span>
+                    ${c.unread > 0 ? `<span class="chat-badge">${c.unread}</span>` : ''}
+                </div>
+            </div>
+        `).join('');
+    }
+
+    function filterChats() {
+        renderChatList(document.getElementById('search-chats').value);
+    }
+
+    // ── Render Contacts ──
+    function renderContacts() {
+        const favList = document.getElementById('favorites-list');
+        const allList = document.getElementById('contacts-list');
+        const favorites = contacts.filter(c => c.favorite);
+        const others = contacts.filter(c => !c.favorite);
+
+        favList.innerHTML = favorites.map((c, i) => renderContactItem(c, i)).join('');
+        allList.innerHTML = others.map((c, i) => renderContactItem(c, i)).join('');
+    }
+
+    function renderContactItem(c, i) {
+        return `
+            <div class="contact-item" style="animation-delay: ${i * 0.05}s">
+                <div class="contact-avatar" style="background: ${AVATAR_COLORS[c.color]}">${c.initials}</div>
+                <div class="contact-info">
+                    <div class="contact-name">${c.name}</div>
+                    <div class="contact-status">${c.status}</div>
+                </div>
+                <button class="contact-action" title="Message">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
+                </button>
+            </div>
+        `;
+    }
+
+    // ── Render Transactions ──
+    function renderTransactions() {
+        const list = document.getElementById('transactions-list');
+        list.innerHTML = transactions.map(t => `
+            <div class="transaction-item">
+                <div class="tx-icon" style="background: ${t.credit ? 'rgba(5,150,105,0.15)' : 'rgba(239,68,68,0.15)'}">
+                    <span style="font-size: 20px">${t.icon}</span>
+                </div>
+                <div class="tx-info">
+                    <div class="tx-name">${t.name}</div>
+                    <div class="tx-date">${t.date}</div>
+                </div>
+                <div class="tx-amount ${t.credit ? 'credit' : 'debit'}">${t.amount} CDF</div>
+            </div>
+        `).join('');
+    }
+
+    // ── Open Chat ──
+    function openChat(id) {
+        currentChat = conversations.find(c => c.id === id);
+        if (!currentChat) return;
+
+        document.getElementById('cv-name').textContent = currentChat.name;
+        document.getElementById('cv-avatar').style.background = AVATAR_COLORS[currentChat.color];
+        document.getElementById('cv-avatar').textContent = currentChat.initials;
+        document.getElementById('cv-status').textContent = currentChat.online ? 'en ligne' : 'vu récemment';
+
+        renderMessages();
+        showScreen('chat-view');
+
+        // Clear unread
+        currentChat.unread = 0;
+        updateChatBadge();
+    }
+
+    function renderMessages() {
+        const area = document.getElementById('messages-area');
+        area.innerHTML = '<div class="msg-date-separator">Aujourd\'hui</div>';
+        currentChat.messages.forEach(m => {
+            const div = document.createElement('div');
+            div.className = `message ${m.sent ? 'sent' : 'received'}`;
+            let prefix = '';
+            if (m.sender && !m.sent) prefix = `<div style="font-size:12px;font-weight:600;color:var(--accent-gold);margin-bottom:3px">${m.sender}</div>`;
+            div.innerHTML = `${prefix}${m.text}<div class="msg-time">${m.time}${m.sent ? ' ✓✓' : ''}</div>`;
+            area.appendChild(div);
+        });
+        area.scrollTop = area.scrollHeight;
+    }
+
+    function exitChat() {
+        currentChat = null;
+        renderChatList();
+        showScreen('main-app', true);
+    }
+
+    // ── Send Message ──
+    function sendMessage() {
+        const input = document.getElementById('chat-input');
+        const text = input.value.trim();
+        if (!text || !currentChat) return;
+
+        input.value = '';
+        input.style.height = 'auto';
+
+        // Add sent message
+        const msg = { text, sent: true, time: new Date().toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' }) };
+        currentChat.messages.push(msg);
+
+        const area = document.getElementById('messages-area');
+        const div = document.createElement('div');
+        div.className = 'message sent';
+        div.innerHTML = `${text}<div class="msg-time">${msg.time} ✓✓</div>`;
+        area.appendChild(div);
+        area.scrollTop = area.scrollHeight;
+
+        // Update preview
+        currentChat.preview = '✓✓ ' + text.substring(0, 40);
+        currentChat.time = msg.time;
+
+        // Simulate reply after 1.5-3s
+        simulateReply();
+    }
+
+    function simulateReply() {
+        const typing = document.getElementById('typing-indicator');
+        typing.classList.add('visible');
+        
+        const area = document.getElementById('messages-area');
+        area.scrollTop = area.scrollHeight;
+
+        const replies = [
+            'D\'accord, noté ! 👌',
+            'Super, merci beaucoup 🙏',
+            'Haha, c\'est vrai 😄',
+            'On en reparle demain ?',
+            'Excellent ! 🔥',
+            'Pas de problème 💪',
+            'Je regarde et je te dis !',
+            'Waouh, impressionnant ! 🚀',
+            '👍👍',
+            'C\'est bon pour moi !',
+        ];
+
+        const delay = 1500 + Math.random() * 2000;
+        setTimeout(() => {
+            typing.classList.remove('visible');
+            const reply = replies[Math.floor(Math.random() * replies.length)];
+            const time = new Date().toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' });
+            const msg = { text: reply, sent: false, time };
+            currentChat.messages.push(msg);
+
+            const div = document.createElement('div');
+            div.className = 'message received';
+            let prefix = '';
+            if (currentChat.isGroup) {
+                const members = ['Membre', 'Admin', 'Invité'];
+                prefix = `<div style="font-size:12px;font-weight:600;color:var(--accent-gold);margin-bottom:3px">${members[Math.floor(Math.random() * members.length)]}</div>`;
+            }
+            div.innerHTML = `${prefix}${reply}<div class="msg-time">${time}</div>`;
+            area.appendChild(div);
+            area.scrollTop = area.scrollHeight;
+
+            currentChat.preview = reply.substring(0, 40);
+            currentChat.time = time;
+        }, delay);
+    }
+
+    function handleChatKey(e) {
+        if (e.key === 'Enter' && !e.shiftKey) {
+            e.preventDefault();
+            sendMessage();
+        }
+    }
+
+    // ── Badge Update ──
+    function updateChatBadge() {
+        const total = conversations.reduce((sum, c) => sum + c.unread, 0);
+        const badge = document.getElementById('chat-tab-badge');
+        if (total > 0) {
+            badge.textContent = total;
+            badge.style.display = 'flex';
+        } else {
+            badge.style.display = 'none';
+        }
+    }
+
+    // ── Toast ──
+    function showToast(icon, text) {
+        const toast = document.getElementById('toast');
+        document.getElementById('toast-icon').textContent = icon;
+        document.getElementById('toast-text').textContent = text;
+        toast.classList.add('visible');
+        setTimeout(() => toast.classList.remove('visible'), 2500);
+    }
+
+    // ── Init ──
+    window.addEventListener('DOMContentLoaded', () => {
+        loadLogos();
+        runSplash();
+    });
+</script>
+</body>
+</html>
