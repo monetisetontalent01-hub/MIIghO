@@ -18,6 +18,7 @@ import (
 	"github.com/miigho/miigho/internal/common"
 	"github.com/miigho/miigho/internal/config"
 	"github.com/miigho/miigho/internal/contact"
+	"github.com/miigho/miigho/internal/ledger"
 	"github.com/miigho/miigho/internal/media"
 	"github.com/miigho/miigho/internal/middleware"
 	"github.com/miigho/miigho/internal/platform/encryption"
@@ -93,6 +94,7 @@ func main() {
 	userRepo := user.NewPostgresUserRepository(pgPool)
 	contactRepo := contact.NewPostgresContactRepository(pgPool)
 	chatRepo := chat.NewPostgresChatRepository(pgPool)
+	ledgerRepo := ledger.NewPostgresRepository(pgPool)
 
 	// Initialize domain services
 	smsProvider := &DevSMSProvider{logger: logger}
@@ -102,6 +104,7 @@ func main() {
 	mediaService := media.NewMediaService(s3Client)
 	encService := &encryption.PassthroughEncryption{}
 	chatService := chat.NewChatService(chatRepo, eventBus, encService)
+	ledgerService := ledger.NewService(ledgerRepo)
 
 	// Initialize WebSocket hub for real-time messaging
 	hub := chat.NewHub()
@@ -114,6 +117,7 @@ func main() {
 	contactHandler := contact.NewContactHandler(contactService)
 	chatHandler := chat.NewChatHandler(chatService)
 	mediaHandler := media.NewMediaHandler(mediaService)
+	ledgerHandler := ledger.NewHandler(ledgerService)
 
 	// Initialize Echo router
 	e := echo.New()
@@ -155,6 +159,7 @@ func main() {
 	contactHandler.RegisterRoutes(apiV1, authMiddleware)
 	chatHandler.RegisterRoutes(apiV1, authMiddleware)
 	mediaHandler.RegisterRoutes(apiV1, authMiddleware)
+	ledgerHandler.RegisterRoutes(apiV1, authMiddleware)
 
 	// Start server in a goroutine
 	serverAddr := fmt.Sprintf("%s:%s", cfg.Server.Host, cfg.Server.Port)

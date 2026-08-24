@@ -1028,38 +1028,55 @@
             </div>
         </section>
 
-        <!-- 3. PAY VIEW (SANDBOX) -->
+        <!-- 3. PAY VIEW (SANDBOX DOUBLE-ENTRY LEDGER) -->
         <section id="view-pay" class="view-pane">
             <div class="dash-container">
                 <div class="dash-header">
                     <div>
                         <h1 style="font-family: 'Outfit'; font-size: 28px; font-weight: 800;">MÏÏghO Pay</h1>
-                        <p style="color: var(--gold); font-size: 13px; font-weight: 600;">Environnement Prototype & Simulation (Sandbox)</p>
+                        <p style="color: var(--gold); font-size: 13px; font-weight: 600;">Environnement Prototype & Simulation (Double-Entry Ledger)</p>
                     </div>
-                    <span class="status-dot badge-proto">LEDGER ARCHITECTURE</span>
+                    <div style="display: flex; gap: 8px;">
+                        <button class="btn-action" style="padding: 8px 14px; font-size: 12px;" onclick="openJournalModal()">📊 Journal d'Audit</button>
+                        <button class="btn-action" style="padding: 8px 14px; font-size: 12px; background: var(--bg-surface-2);" onclick="openQRModal(1)">📷 Scanner QR</button>
+                    </div>
                 </div>
 
+                <!-- Info Alert -->
+                <div style="background: rgba(245, 158, 11, 0.1); border: 1px solid rgba(245, 158, 11, 0.3); border-radius: var(--radius-md); padding: 14px; margin-bottom: 20px; display: flex; gap: 12px; align-items: center;">
+                    <span style="font-size: 20px;">🛡️</span>
+                    <div>
+                        <div style="font-size: 11px; font-weight: 800; color: var(--gold); letter-spacing: 0.5px;">SANDBOX FINANCIER AUDITABLE</div>
+                        <div style="font-size: 12px; color: var(--text-secondary);">Toutes les opérations appliquent la comptabilité en partie double (&Sigma; Débits = &Sigma; Crédits). Aucun fonds réel n'est engagé.</div>
+                    </div>
+                </div>
+
+                <!-- Wallet Card -->
                 <div class="wallet-card">
                     <div class="wallet-top">
                         <div class="wallet-tag">COMPTE PRINCIPAL XOF / FCFA</div>
                         <span class="status-dot badge-active">ACTIF</span>
                     </div>
-                    <div class="wallet-balance">45 000 FCFA</div>
-                    <p style="font-size: 12px; color: rgba(255,255,255,0.7); margin-top: 4px;">
+                    <div class="wallet-balance" id="pay-wallet-balance">45 000 FCFA</div>
+                    <p style="font-size: 12px; color: rgba(255,255,255,0.7); margin-top: 4px;" id="pay-wallet-equiv">
                         Équivalent ~68.60 EUR • Ledger ID: ACC-9824-01
                     </p>
                     <div class="wallet-actions">
-                        <button class="btn-action" onclick="alert('Simulation d\'envoi d\'argent P2P')">Envoyer</button>
-                        <button class="btn-action" onclick="alert('Simulation de demande de paiement')">Recevoir</button>
-                        <button class="btn-action" onclick="alert('Simulation de recharge Mobile Money')">Recharger</button>
+                        <button class="btn-action" onclick="openSendModal()">📤 Envoyer</button>
+                        <button class="btn-action" onclick="openQRModal(0)">📥 Recevoir</button>
+                        <button class="btn-action" onclick="openCashInModal()">➕ Recharger</button>
+                        <button class="btn-action" onclick="openCashOutModal()">🏦 Retirer</button>
                     </div>
                 </div>
 
-                <div style="background: var(--bg-surface-2); border: 1px solid var(--border-subtle); border-radius: var(--radius-lg); padding: 20px;">
-                    <h3 style="font-size: 16px; font-weight: 700; margin-bottom: 8px;">Architecture Double-Entry Ledger (Phase 2)</h3>
-                    <p style="font-size: 13px; color: var(--text-secondary); line-height: 1.5;">
-                        Le solde n'est jamais incrémenté directement (pas de <code>wallet.balance += x</code>). Toutes les écritures sont enregistrées dans un journal immuable avec débits et crédits équilibrés, garantissant une traçabilité financière absolue.
-                    </p>
+                <!-- Section Transactions -->
+                <div style="display: flex; justify-content: space-between; align-items: center; margin: 24px 0 12px;">
+                    <h3 style="font-family: 'Outfit'; font-size: 18px; font-weight: 800;">Historique des opérations</h3>
+                    <span style="font-size: 12px; color: var(--text-muted); font-weight: 600;" id="pay-tx-count">3 écritures</span>
+                </div>
+
+                <div id="pay-tx-container" style="display: flex; flex-direction: column; gap: 10px;">
+                    <!-- Rempli dynamiquement par JS -->
                 </div>
             </div>
         </section>
@@ -1085,7 +1102,7 @@
             </div>
         </section>
 
-        <!-- 5. MODULES PLACEHOLDER (Business, Market, Cloud, etc.) -->
+        <!-- 5. MODULES PLACEHOLDER -->
         <section id="view-module-generic" class="view-pane">
             <div class="dash-container" style="text-align: center; padding-top: 60px;">
                 <div id="module-hero-icon" style="font-size: 50px; margin-bottom: 16px;">🏢</div>
@@ -1099,6 +1116,13 @@
         </section>
 
     </main>
+
+    <!-- MODAL OVERLAYS (POUR PAY SANDBOX) -->
+    <div id="pay-modal-backdrop" style="display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.6); z-index: 9999; justify-content: center; align-items: center; padding: 20px;" onclick="closePayModal(event)">
+        <div id="pay-modal-content" style="background: var(--bg-surface-1); border: 1px solid var(--border-subtle); border-radius: 20px; max-width: 520px; width: 100%; max-height: 90vh; overflow-y: auto; padding: 24px; box-shadow: 0 24px 48px rgba(0,0,0,0.4);" onclick="event.stopPropagation()">
+            <!-- Rempli dynamiquement -->
+        </div>
+    </div>
 
     <!-- NAVIGATION INFÉRIEURE (MOBILE) -->
     <nav class="mobile-bottom-nav">
@@ -1121,6 +1145,359 @@
     </nav>
 
     <script>
+        // === ÉTAT DU LEDGER EN PARTIE DOUBLE (SANDBOX JS) ===
+        let ledgerBalance = 45000;
+        let ledgerTransactions = [
+            {
+                id: 'tx-01',
+                title: 'Recharge Wave CI',
+                subtitle: 'Mobile Money • Sandbox',
+                amount: 25000,
+                isCredit: true,
+                type: 'momo_cash_in',
+                time: 'Il y a 3 heures',
+                postings: [
+                    { account: 'Portefeuille Principal (Mamadou Koné)', type: 'Actif', dir: 'DÉBIT', amount: 25000 },
+                    { account: 'MoMo Settlement Pool', type: 'Passif', dir: 'CRÉDIT', amount: 25000 }
+                ]
+            },
+            {
+                id: 'tx-02',
+                title: 'Transfert de Amina Diallo',
+                subtitle: 'MÏÏghO Pay P2P • Sandbox',
+                amount: 30000,
+                isCredit: true,
+                type: 'p2p_transfer',
+                time: 'Hier à 14:20',
+                postings: [
+                    { account: 'Portefeuille Principal (Mamadou Koné)', type: 'Actif', dir: 'DÉBIT', amount: 30000 },
+                    { account: 'Compte Amina Diallo', type: 'Actif', dir: 'CRÉDIT', amount: 30000 }
+                ]
+            },
+            {
+                id: 'tx-03',
+                title: 'Commande Market (Escrow)',
+                subtitle: 'Boutique Artisanat Sahel • Séquestre Garanti',
+                amount: 10000,
+                isCredit: false,
+                type: 'marketplace_escrow',
+                time: 'Il y a 2 jours',
+                postings: [
+                    { account: 'Portefeuille Principal (Mamadou Koné)', type: 'Actif', dir: 'CRÉDIT', amount: 10000 },
+                    { account: 'Marketplace Escrow Account', type: 'Passif', dir: 'DÉBIT', amount: 10000 }
+                ]
+            }
+        ];
+
+        function renderPayView() {
+            const balEl = document.getElementById('pay-wallet-balance');
+            const dashBalEl = document.querySelector('.wallet-balance');
+            const equivEl = document.getElementById('pay-wallet-equiv');
+            const countEl = document.getElementById('pay-tx-count');
+            const container = document.getElementById('pay-tx-container');
+
+            const formatted = new Intl.NumberFormat('fr-FR').format(ledgerBalance) + ' FCFA';
+            if (balEl) balEl.innerText = formatted;
+            if (dashBalEl) dashBalEl.innerText = formatted;
+            if (equivEl) equivEl.innerText = `Équivalent ~${(ledgerBalance/655.957).toFixed(2)} EUR • Ledger ID: ACC-9824-01`;
+            if (countEl) countEl.innerText = `${ledgerTransactions.length} écritures`;
+
+            if (container) {
+                container.innerHTML = ledgerTransactions.map(tx => `
+                    <div style="display: flex; align-items: center; justify-content: space-between; padding: 14px; background: var(--bg-surface-2); border: 1px solid var(--border-subtle); border-radius: var(--radius-md); cursor: pointer;" onclick="openTxDetailModal('${tx.id}')">
+                        <div style="display: flex; align-items: center; gap: 12px;">
+                            <div style="width: 40px; height: 40px; border-radius: 10px; background: ${tx.isCredit ? 'rgba(16, 185, 129, 0.12)' : 'rgba(239, 68, 68, 0.12)'}; display: flex; align-items: center; justify-content: center; font-size: 18px;">
+                                ${tx.isCredit ? '📥' : '📤'}
+                            </div>
+                            <div>
+                                <div style="font-weight: 700; font-size: 14px;">${tx.title}</div>
+                                <div style="font-size: 12px; color: var(--text-secondary);">${tx.subtitle} • ${tx.time}</div>
+                            </div>
+                        </div>
+                        <div style="text-align: right;">
+                            <div style="font-family: 'Space Grotesk'; font-weight: 800; font-size: 15px; color: ${tx.isCredit ? '#10B981' : '#EF4444'};">
+                                ${tx.isCredit ? '+' : '-'}${new Intl.NumberFormat('fr-FR').format(tx.amount)} FCFA
+                            </div>
+                            <div style="font-size: 10px; font-weight: 700; color: #10B981;">COMPLÉTÉ ✓</div>
+                        </div>
+                    </div>
+                `).join('');
+            }
+        }
+
+        function openModalContent(html) {
+            const backdrop = document.getElementById('pay-modal-backdrop');
+            const content = document.getElementById('pay-modal-content');
+            content.innerHTML = html;
+            backdrop.style.display = 'flex';
+        }
+
+        function closePayModal(e) {
+            document.getElementById('pay-modal-backdrop').style.display = 'none';
+        }
+
+        function openSendModal() {
+            openModalContent(`
+                <h2 style="font-family: 'Outfit'; font-size: 20px; font-weight: 800; margin-bottom: 6px;">Envoyer de l'argent (P2P)</h2>
+                <p style="color: var(--gold); font-size: 12px; margin-bottom: 16px;">Simulation de transfert instantané Ledger</p>
+                <div style="display: flex; flex-direction: column; gap: 12px;">
+                    <div>
+                        <label style="font-size: 12px; font-weight: 700; color: var(--text-secondary);">Destinataire</label>
+                        <select id="send-dest" style="width: 100%; padding: 10px; border-radius: 10px; border: 1px solid var(--border-subtle); background: var(--bg-surface-2); color: var(--text-primary); margin-top: 4px;">
+                            <option value="Amina Diallo (MG-7731-SEN)">Amina Diallo (MG-7731-SEN)</option>
+                            <option value="Moussa Traoré (MG-4412-MLI)">Moussa Traoré (MG-4412-MLI)</option>
+                            <option value="Paul Biya (MG-1290-CMR)">Paul Biya (MG-1290-CMR)</option>
+                        </select>
+                    </div>
+                    <div>
+                        <label style="font-size: 12px; font-weight: 700; color: var(--text-secondary);">Montant (FCFA)</label>
+                        <input id="send-amount" type="number" value="5000" style="width: 100%; padding: 10px; font-family: 'Space Grotesk'; font-size: 18px; font-weight: 800; border-radius: 10px; border: 1px solid var(--border-subtle); background: var(--bg-surface-2); color: var(--primary); margin-top: 4px;">
+                    </div>
+                    <div>
+                        <label style="font-size: 12px; font-weight: 700; color: var(--text-secondary);">Note / Motif</label>
+                        <input id="send-desc" type="text" placeholder="Ex: Déjeuner, cadeau..." style="width: 100%; padding: 10px; border-radius: 10px; border: 1px solid var(--border-subtle); background: var(--bg-surface-2); color: var(--text-primary); margin-top: 4px;">
+                    </div>
+                    <button class="btn-action" style="margin-top: 10px; width: 100%;" onclick="confirmSendMoney()">Confirmer le transfert ✓</button>
+                </div>
+            `);
+        }
+
+        function confirmSendMoney() {
+            const dest = document.getElementById('send-dest').value;
+            const amount = parseInt(document.getElementById('send-amount').value, 10);
+            const desc = document.getElementById('send-desc').value || `Transfert P2P vers ${dest.split(' ')[0]}`;
+
+            if (isNaN(amount) || amount <= 0) return alert('Montant invalide.');
+            if (amount > ledgerBalance) return alert('Solde insuffisant pour ce transfert.');
+
+            ledgerBalance -= amount;
+            ledgerTransactions.unshift({
+                id: 'tx-' + Date.now(),
+                title: desc,
+                subtitle: 'MÏÏghO Pay P2P • Envoyé',
+                amount: amount,
+                isCredit: false,
+                type: 'p2p_transfer',
+                time: 'À l\'instant',
+                postings: [
+                    { account: 'Portefeuille Principal (Mamadou Koné)', type: 'Actif', dir: 'CRÉDIT', amount: amount },
+                    { account: 'Compte ' + dest.split(' ')[0], type: 'Actif', dir: 'DÉBIT', amount: amount }
+                ]
+            });
+
+            closePayModal();
+            renderPayView();
+            alert(`Transfert de ${amount} FCFA envoyé à ${dest} !`);
+        }
+
+        function openCashInModal() {
+            openModalContent(`
+                <h2 style="font-family: 'Outfit'; font-size: 20px; font-weight: 800; margin-bottom: 6px;">Recharger le portefeuille</h2>
+                <p style="color: var(--gold); font-size: 12px; margin-bottom: 16px;">Simulation Mobile Money Sandbox</p>
+                <div style="display: flex; flex-direction: column; gap: 12px;">
+                    <div>
+                        <label style="font-size: 12px; font-weight: 700; color: var(--text-secondary);">Opérateur</label>
+                        <select id="cashin-provider" style="width: 100%; padding: 10px; border-radius: 10px; border: 1px solid var(--border-subtle); background: var(--bg-surface-2); color: var(--text-primary); margin-top: 4px;">
+                            <option value="Wave CI">🌊 Wave CI / SN</option>
+                            <option value="Orange Money">🍊 Orange Money</option>
+                            <option value="MTN MoMo">🟡 MTN MoMo</option>
+                            <option value="Carte Bancaire">💳 Carte Bancaire Visa/Mastercard</option>
+                        </select>
+                    </div>
+                    <div>
+                        <label style="font-size: 12px; font-weight: 700; color: var(--text-secondary);">Montant (FCFA)</label>
+                        <input id="cashin-amount" type="number" value="10000" style="width: 100%; padding: 10px; font-family: 'Space Grotesk'; font-size: 18px; font-weight: 800; border-radius: 10px; border: 1px solid var(--border-subtle); background: var(--bg-surface-2); color: var(--gold); margin-top: 4px;">
+                    </div>
+                    <button class="btn-action" style="margin-top: 10px; width: 100%; background: var(--gold); color: #000;" onclick="confirmCashIn()">Simuler la recharge ✓</button>
+                </div>
+            `);
+        }
+
+        function confirmCashIn() {
+            const provider = document.getElementById('cashin-provider').value;
+            const amount = parseInt(document.getElementById('cashin-amount').value, 10);
+            if (isNaN(amount) || amount <= 0) return alert('Montant invalide.');
+
+            ledgerBalance += amount;
+            ledgerTransactions.unshift({
+                id: 'tx-' + Date.now(),
+                title: `Recharge ${provider}`,
+                subtitle: 'Mobile Money • Recharge Sandbox',
+                amount: amount,
+                isCredit: true,
+                type: 'momo_cash_in',
+                time: 'À l\'instant',
+                postings: [
+                    { account: 'Portefeuille Principal (Mamadou Koné)', type: 'Actif', dir: 'DÉBIT', amount: amount },
+                    { account: `MoMo Settlement Pool (${provider})`, type: 'Passif', dir: 'CRÉDIT', amount: amount }
+                ]
+            });
+
+            closePayModal();
+            renderPayView();
+            alert(`Recharge de ${amount} FCFA validée via ${provider} !`);
+        }
+
+        function openCashOutModal() {
+            openModalContent(`
+                <h2 style="font-family: 'Outfit'; font-size: 20px; font-weight: 800; margin-bottom: 6px;">Retirer vers Mobile Money</h2>
+                <p style="color: var(--gold); font-size: 12px; margin-bottom: 16px;">Retrait simulé Sandbox (Solde: ${ledgerBalance} FCFA)</p>
+                <div style="display: flex; flex-direction: column; gap: 12px;">
+                    <div>
+                        <label style="font-size: 12px; font-weight: 700; color: var(--text-secondary);">Opérateur</label>
+                        <select id="cashout-provider" style="width: 100%; padding: 10px; border-radius: 10px; border: 1px solid var(--border-subtle); background: var(--bg-surface-2); color: var(--text-primary); margin-top: 4px;">
+                            <option value="Wave CI">🌊 Wave CI</option>
+                            <option value="Orange Money">🍊 Orange Money</option>
+                            <option value="MTN MoMo">🟡 MTN MoMo</option>
+                        </select>
+                    </div>
+                    <div>
+                        <label style="font-size: 12px; font-weight: 700; color: var(--text-secondary);">Montant du retrait (FCFA)</label>
+                        <input id="cashout-amount" type="number" value="5000" style="width: 100%; padding: 10px; font-family: 'Space Grotesk'; font-size: 18px; font-weight: 800; border-radius: 10px; border: 1px solid var(--border-subtle); background: var(--bg-surface-2); color: #EF4444; margin-top: 4px;">
+                    </div>
+                    <button class="btn-action" style="margin-top: 10px; width: 100%; background: #EF4444;" onclick="confirmCashOut()">Confirmer le retrait ✓</button>
+                </div>
+            `);
+        }
+
+        function confirmCashOut() {
+            const provider = document.getElementById('cashout-provider').value;
+            const amount = parseInt(document.getElementById('cashout-amount').value, 10);
+            if (isNaN(amount) || amount <= 0) return alert('Montant invalide.');
+            if (amount > ledgerBalance) return alert('Solde insuffisant pour ce retrait.');
+
+            ledgerBalance -= amount;
+            ledgerTransactions.unshift({
+                id: 'tx-' + Date.now(),
+                title: `Retrait vers ${provider}`,
+                subtitle: 'Mobile Money • Retrait Sandbox',
+                amount: amount,
+                isCredit: false,
+                type: 'momo_cash_out',
+                time: 'À l\'instant',
+                postings: [
+                    { account: 'Portefeuille Principal (Mamadou Koné)', type: 'Actif', dir: 'CRÉDIT', amount: amount },
+                    { account: `MoMo Settlement Pool (${provider})`, type: 'Passif', dir: 'DÉBIT', amount: amount }
+                ]
+            });
+
+            closePayModal();
+            renderPayView();
+            alert(`Retrait de ${amount} FCFA vers ${provider} effectué avec succès !`);
+        }
+
+        function openQRModal(tab) {
+            openModalContent(`
+                <h2 style="font-family: 'Outfit'; font-size: 20px; font-weight: 800; margin-bottom: 12px;">MÏÏghO QR Pay (Sandbox)</h2>
+                <div style="display: flex; gap: 8px; margin-bottom: 16px;">
+                    <button class="btn-action" style="flex: 1; ${tab === 0 ? '' : 'background: var(--bg-surface-2);'}" onclick="openQRModal(0)">Mon QR Code</button>
+                    <button class="btn-action" style="flex: 1; ${tab === 1 ? '' : 'background: var(--bg-surface-2);'}" onclick="openQRModal(1)">Scanner & Payer</button>
+                </div>
+                ${tab === 0 ? `
+                    <div style="text-align: center;">
+                        <div style="background: #fff; border-radius: 16px; padding: 20px; display: inline-block; margin-bottom: 12px;">
+                            <div style="width: 140px; height: 140px; background: #0F172A; border-radius: 8px; display: flex; align-items: center; justify-content: center; font-size: 60px; color: #fff;">📱</div>
+                        </div>
+                        <div style="font-family: 'Space Grotesk'; font-size: 16px; font-weight: 800; color: var(--gold);">MG-9824-CIV</div>
+                        <p style="font-size: 12px; color: var(--text-secondary); margin-top: 4px;">Mamadou Koné • MÏÏghO Pay</p>
+                    </div>
+                ` : `
+                    <div style="display: flex; flex-direction: column; gap: 12px;">
+                        <div>
+                            <label style="font-size: 12px; font-weight: 700; color: var(--text-secondary);">Commerçant Sandbox</label>
+                            <select id="qr-merchant" style="width: 100%; padding: 10px; border-radius: 10px; border: 1px solid var(--border-subtle); background: var(--bg-surface-2); color: var(--text-primary); margin-top: 4px;">
+                                <option value="Pharmacie Centrale Abidjan">Pharmacie Centrale Abidjan</option>
+                                <option value="Boutique Artisanat Sahel">Boutique Artisanat Sahel</option>
+                                <option value="Supermarché Étoile Dakar">Supermarché Étoile Dakar</option>
+                            </select>
+                        </div>
+                        <div>
+                            <label style="font-size: 12px; font-weight: 700; color: var(--text-secondary);">Montant à payer (FCFA)</label>
+                            <input id="qr-amount" type="number" value="3500" style="width: 100%; padding: 10px; font-family: 'Space Grotesk'; font-size: 18px; font-weight: 800; border-radius: 10px; border: 1px solid var(--border-subtle); background: var(--bg-surface-2); color: #3B82F6; margin-top: 4px;">
+                        </div>
+                        <button class="btn-action" style="margin-top: 10px; width: 100%; background: #3B82F6;" onclick="confirmQRPay()">Régler le paiement QR ✓</button>
+                    </div>
+                `}
+            `);
+        }
+
+        function confirmQRPay() {
+            const merchant = document.getElementById('qr-merchant').value;
+            const amount = parseInt(document.getElementById('qr-amount').value, 10);
+            if (isNaN(amount) || amount <= 0) return alert('Montant invalide.');
+            if (amount > ledgerBalance) return alert('Solde insuffisant pour ce paiement QR.');
+
+            ledgerBalance -= amount;
+            ledgerTransactions.unshift({
+                id: 'tx-' + Date.now(),
+                title: `Paiement QR • ${merchant}`,
+                subtitle: 'Paiement QR Code • Sandbox',
+                amount: amount,
+                isCredit: false,
+                type: 'p2p_transfer',
+                time: 'À l\'instant',
+                postings: [
+                    { account: 'Portefeuille Principal (Mamadou Koné)', type: 'Actif', dir: 'CRÉDIT', amount: amount },
+                    { account: `Boutique ${merchant}`, type: 'Actif', dir: 'DÉBIT', amount: amount }
+                ]
+            });
+
+            closePayModal();
+            renderPayView();
+            alert(`Paiement QR de ${amount} FCFA réglé avec succès chez ${merchant} !`);
+        }
+
+        function openJournalModal() {
+            openModalContent(`
+                <h2 style="font-family: 'Outfit'; font-size: 20px; font-weight: 800; margin-bottom: 6px;">Journal d'Audit (Double-Entry Ledger)</h2>
+                <p style="color: var(--text-secondary); font-size: 12px; margin-bottom: 16px;">Vérification de l'invariant strict : &Sigma; Débits = &Sigma; Crédits</p>
+                <div style="display: flex; flex-direction: column; gap: 12px;">
+                    ${ledgerTransactions.map(tx => `
+                        <div style="background: var(--bg-surface-2); border: 1px solid var(--border-subtle); border-radius: 12px; padding: 14px;">
+                            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
+                                <span style="font-weight: 700; font-size: 13px;">${tx.title}</span>
+                                <span style="font-size: 10px; font-weight: 800; color: #10B981; background: rgba(16, 185, 129, 0.15); padding: 2px 6px; border-radius: 4px;">ÉQUILIBRÉ ✓</span>
+                            </div>
+                            <div style="font-size: 11px; color: var(--text-muted); margin-bottom: 8px;">${tx.time} • Montant : ${tx.amount} FCFA</div>
+                            <div style="display: flex; flex-direction: column; gap: 4px;">
+                                ${tx.postings.map(p => `
+                                    <div style="display: flex; justify-content: space-between; font-size: 11px; padding: 4px 8px; background: rgba(255,255,255,0.03); border-radius: 6px;">
+                                        <span><strong style="color: ${p.dir === 'DÉBIT' ? '#3B82F6' : '#10B981'};">${p.dir}</strong> ${p.account}</span>
+                                        <span style="font-family: 'Space Grotesk'; font-weight: 700;">${p.amount} FCFA</span>
+                                    </div>
+                                `).join('')}
+                            </div>
+                        </div>
+                    `).join('')}
+                </div>
+            `);
+        }
+
+        function openTxDetailModal(txId) {
+            const tx = ledgerTransactions.find(t => t.id === txId) || ledgerTransactions[0];
+            openModalContent(`
+                <h2 style="font-family: 'Outfit'; font-size: 20px; font-weight: 800; margin-bottom: 4px;">Détail de l'opération</h2>
+                <p style="color: var(--text-secondary); font-size: 12px; margin-bottom: 16px;">Référence Sandbox & Postings</p>
+                <div style="text-align: center; margin-bottom: 20px;">
+                    <div style="font-family: 'Space Grotesk'; font-size: 28px; font-weight: 800; color: ${tx.isCredit ? '#10B981' : '#EF4444'};">
+                        ${tx.isCredit ? '+' : '-'}${new Intl.NumberFormat('fr-FR').format(tx.amount)} FCFA
+                    </div>
+                    <div style="font-weight: 700; font-size: 14px; margin-top: 4px;">${tx.title}</div>
+                    <div style="font-size: 12px; color: var(--text-secondary);">${tx.subtitle}</div>
+                </div>
+                <h4 style="font-size: 13px; font-weight: 700; margin-bottom: 8px;">Écritures Double-Entry</h4>
+                <div style="display: flex; flex-direction: column; gap: 6px; margin-bottom: 16px;">
+                    ${tx.postings.map(p => `
+                        <div style="display: flex; justify-content: space-between; font-size: 12px; padding: 8px 12px; background: var(--bg-surface-2); border-radius: 8px;">
+                            <span><strong style="color: ${p.dir === 'DÉBIT' ? '#3B82F6' : '#10B981'};">${p.dir}</strong> ${p.account}</span>
+                            <span style="font-family: 'Space Grotesk'; font-weight: 700;">${p.amount} FCFA</span>
+                        </div>
+                    `).join('')}
+                </div>
+                <button class="btn-action" style="width: 100%;" onclick="closePayModal()">Fermer</button>
+            `);
+        }
+
         function switchView(viewKey) {
             document.querySelectorAll('.view-pane').forEach(el => el.classList.remove('active'));
             document.querySelectorAll('.nav-link').forEach(el => el.classList.remove('active'));
@@ -1147,6 +1524,10 @@
 
             const activeView = document.getElementById('view-' + viewKey);
             if (activeView) activeView.classList.add('active');
+
+            if (viewKey === 'pay' || viewKey === 'dash') {
+                renderPayView();
+            }
         }
 
         function toggleTheme() {
@@ -1178,6 +1559,9 @@
         document.getElementById('chat-text-input')?.addEventListener('keypress', function(e) {
             if (e.key === 'Enter') sendMessage();
         });
+
+        // Initial render
+        renderPayView();
     </script>
 </body>
 </html>

@@ -18,6 +18,8 @@ import 'features/chat/data/chat_repository.dart';
 import 'features/chat/presentation/bloc/chat_bloc.dart';
 import 'features/contacts/data/contacts_repository.dart';
 import 'features/contacts/presentation/bloc/contacts_bloc.dart';
+import 'features/pay/data/pay_repository.dart';
+import 'features/pay/presentation/bloc/pay_bloc.dart';
 
 class MiighoApp extends StatelessWidget {
   final SecureStorageService secureStorage;
@@ -51,6 +53,9 @@ class MiighoApp extends StatelessWidget {
       apiClient: apiClient,
       database: database,
     );
+    final payRepository = PayRepository(
+      apiClient: apiClient,
+    );
     final router = createRouter(authRepository);
 
     return MultiBlocProvider(
@@ -72,6 +77,9 @@ class MiighoApp extends StatelessWidget {
         ),
         BlocProvider(
           create: (_) => ContactsBloc(repository: contactsRepository)..add(const LoadContacts()),
+        ),
+        BlocProvider(
+          create: (_) => PayBloc(repository: payRepository)..add(LoadPayWallet()),
         ),
       ],
       child: BlocBuilder<ThemeCubit, ThemeMode>(

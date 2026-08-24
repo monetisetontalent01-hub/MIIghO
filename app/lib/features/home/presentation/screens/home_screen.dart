@@ -10,6 +10,8 @@ import '../../../../shared/widgets/miigho_avatar.dart';
 import '../../../../shared/widgets/miigho_logo.dart';
 import '../../../../shared/widgets/miigho_module_card.dart';
 import '../../../../shared/widgets/miigho_status_badge.dart';
+import '../../../pay/presentation/bloc/pay_bloc.dart';
+import '../../../pay/models/pay_models.dart';
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
@@ -368,33 +370,47 @@ class _HomeScreenState extends State<HomeScreen> {
             ],
           ),
           const SizedBox(height: 6),
-          Row(
-            crossAxisAlignment: CrossAxisAlignment.baseline,
-            textBaseline: TextBaseline.alphabetic,
-            children: [
-              Text(
-                _isBalanceVisible
-                    ? '45 000'
-                    : '••••••',
-                style: const TextStyle(
-                  fontFamily: 'Space Grotesk',
-                  fontSize: 32,
-                  fontWeight: FontWeight.w800,
-                  color: MiighoColors.gold,
-                  letterSpacing: -0.5,
-                ),
-              ),
-              const SizedBox(width: 8),
-              const Text(
-                DemoDataProvider.defaultCurrency,
-                style: TextStyle(
-                  fontFamily: 'Space Grotesk',
-                  fontSize: 16,
-                  fontWeight: FontWeight.w700,
-                  color: MiighoColors.goldLight,
-                ),
-              ),
-            ],
+          BlocBuilder<PayBloc, PayState>(
+            builder: (context, payState) {
+              int balance = 45000;
+              String currency = 'FCFA';
+              if (payState is PayLoaded) {
+                balance = payState.wallet.availableBalance;
+                currency = payState.wallet.currency;
+              } else if (payState is PayActionInProgress && payState.currentWallet != null) {
+                balance = payState.currentWallet!.availableBalance;
+                currency = payState.currentWallet!.currency;
+              }
+
+              return Row(
+                crossAxisAlignment: CrossAxisAlignment.baseline,
+                textBaseline: TextBaseline.alphabetic,
+                children: [
+                  Text(
+                    _isBalanceVisible
+                        ? balance.toString()
+                        : '••••••',
+                    style: const TextStyle(
+                      fontFamily: 'Space Grotesk',
+                      fontSize: 32,
+                      fontWeight: FontWeight.w800,
+                      color: MiighoColors.gold,
+                      letterSpacing: -0.5,
+                    ),
+                  ),
+                  const SizedBox(width: 8),
+                  Text(
+                    currency,
+                    style: const TextStyle(
+                      fontFamily: 'Space Grotesk',
+                      fontSize: 16,
+                      fontWeight: FontWeight.w700,
+                      color: MiighoColors.goldLight,
+                    ),
+                  ),
+                ],
+              );
+            },
           ),
           const SizedBox(height: 18),
           const Divider(height: 1),

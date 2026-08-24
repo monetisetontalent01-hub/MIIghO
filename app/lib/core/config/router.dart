@@ -9,6 +9,7 @@ import '../../features/home/presentation/screens/home_screen.dart';
 import '../../features/chat/presentation/screens/chat_master_detail_screen.dart';
 import '../../features/contacts/presentation/screens/contacts_screen.dart';
 import '../../features/pay/presentation/screens/pay_screen.dart';
+import '../../features/pay/presentation/screens/ledger_journal_screen.dart';
 import '../../features/identity/presentation/screens/identity_screen.dart';
 import '../../features/settings/presentation/screens/settings_screen.dart';
 import '../../features/modules/presentation/screens/module_screen.dart';
@@ -85,6 +86,12 @@ GoRouter createRouter(AuthRepository authRepository) {
           GoRoute(
             path: '/pay',
             builder: (context, state) => const PayScreen(),
+            routes: [
+              GoRoute(
+                path: 'journal',
+                builder: (context, state) => const LedgerJournalScreen(),
+              ),
+            ],
           ),
           GoRoute(
             path: '/identity',
