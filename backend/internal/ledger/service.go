@@ -2,6 +2,7 @@ package ledger
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"strings"
 	"time"
@@ -216,9 +217,15 @@ func (s *Service) TransferP2P(ctx context.Context, fromUserID uuid.UUID, req *Tr
 		return nil, ErrInvalidAmount
 	}
 
-	// Check Idempotency Key
+	// Check Idempotency Key & Payload Mismatch
 	if isUsed, entry, _ := s.repo.CheckIdempotency(ctx, req.IdempotencyKey); isUsed {
-		return s.GetDetailedTransaction(ctx, entry.ID)
+		existing, err := s.GetDetailedTransaction(ctx, entry.ID)
+		if err == nil {
+			if existing.TotalDebit != req.Amount {
+				return nil, fmt.Errorf("%w: existing amount=%d, requested amount=%d", ErrIdempotencyConflict, existing.TotalDebit, req.Amount)
+			}
+			return existing, nil
+		}
 	}
 
 	fromAcc, err := s.GetOrCreateUserAccount(ctx, fromUserID, req.Currency)
@@ -290,6 +297,11 @@ func (s *Service) TransferP2P(ctx context.Context, fromUserID uuid.UUID, req *Tr
 	}
 
 	if err := s.repo.PostJournalEntry(ctx, entry, postings, req.IdempotencyKey); err != nil {
+		if errors.Is(err, ErrDuplicateIdempotency) {
+			if isUsed, existingEntry, _ := s.repo.CheckIdempotency(ctx, req.IdempotencyKey); isUsed {
+				return s.GetDetailedTransaction(ctx, existingEntry.ID)
+			}
+		}
 		return nil, err
 	}
 
@@ -302,8 +314,15 @@ func (s *Service) CashIn(ctx context.Context, userID uuid.UUID, req *CashInReque
 		return nil, ErrInvalidAmount
 	}
 
+	// Check Idempotency Key & Payload Mismatch
 	if isUsed, entry, _ := s.repo.CheckIdempotency(ctx, req.IdempotencyKey); isUsed {
-		return s.GetDetailedTransaction(ctx, entry.ID)
+		existing, err := s.GetDetailedTransaction(ctx, entry.ID)
+		if err == nil {
+			if existing.TotalDebit != req.Amount {
+				return nil, fmt.Errorf("%w: existing amount=%d, requested amount=%d", ErrIdempotencyConflict, existing.TotalDebit, req.Amount)
+			}
+			return existing, nil
+		}
 	}
 
 	userAcc, err := s.GetOrCreateUserAccount(ctx, userID, req.Currency)
@@ -353,6 +372,11 @@ func (s *Service) CashIn(ctx context.Context, userID uuid.UUID, req *CashInReque
 	}
 
 	if err := s.repo.PostJournalEntry(ctx, entry, postings, req.IdempotencyKey); err != nil {
+		if errors.Is(err, ErrDuplicateIdempotency) {
+			if isUsed, existingEntry, _ := s.repo.CheckIdempotency(ctx, req.IdempotencyKey); isUsed {
+				return s.GetDetailedTransaction(ctx, existingEntry.ID)
+			}
+		}
 		return nil, err
 	}
 
@@ -365,8 +389,15 @@ func (s *Service) CashOut(ctx context.Context, userID uuid.UUID, req *CashOutReq
 		return nil, ErrInvalidAmount
 	}
 
+	// Check Idempotency Key & Payload Mismatch
 	if isUsed, entry, _ := s.repo.CheckIdempotency(ctx, req.IdempotencyKey); isUsed {
-		return s.GetDetailedTransaction(ctx, entry.ID)
+		existing, err := s.GetDetailedTransaction(ctx, entry.ID)
+		if err == nil {
+			if existing.TotalDebit != req.Amount {
+				return nil, fmt.Errorf("%w: existing amount=%d, requested amount=%d", ErrIdempotencyConflict, existing.TotalDebit, req.Amount)
+			}
+			return existing, nil
+		}
 	}
 
 	userAcc, err := s.GetOrCreateUserAccount(ctx, userID, req.Currency)
@@ -424,6 +455,11 @@ func (s *Service) CashOut(ctx context.Context, userID uuid.UUID, req *CashOutReq
 	}
 
 	if err := s.repo.PostJournalEntry(ctx, entry, postings, req.IdempotencyKey); err != nil {
+		if errors.Is(err, ErrDuplicateIdempotency) {
+			if isUsed, existingEntry, _ := s.repo.CheckIdempotency(ctx, req.IdempotencyKey); isUsed {
+				return s.GetDetailedTransaction(ctx, existingEntry.ID)
+			}
+		}
 		return nil, err
 	}
 
@@ -436,8 +472,15 @@ func (s *Service) QRPay(ctx context.Context, userID uuid.UUID, req *QRPayRequest
 		return nil, ErrInvalidAmount
 	}
 
+	// Check Idempotency Key & Payload Mismatch
 	if isUsed, entry, _ := s.repo.CheckIdempotency(ctx, req.IdempotencyKey); isUsed {
-		return s.GetDetailedTransaction(ctx, entry.ID)
+		existing, err := s.GetDetailedTransaction(ctx, entry.ID)
+		if err == nil {
+			if existing.TotalDebit != req.Amount {
+				return nil, fmt.Errorf("%w: existing amount=%d, requested amount=%d", ErrIdempotencyConflict, existing.TotalDebit, req.Amount)
+			}
+			return existing, nil
+		}
 	}
 
 	userAcc, err := s.GetOrCreateUserAccount(ctx, userID, req.Currency)
@@ -501,6 +544,11 @@ func (s *Service) QRPay(ctx context.Context, userID uuid.UUID, req *QRPayRequest
 	}
 
 	if err := s.repo.PostJournalEntry(ctx, entry, postings, req.IdempotencyKey); err != nil {
+		if errors.Is(err, ErrDuplicateIdempotency) {
+			if isUsed, existingEntry, _ := s.repo.CheckIdempotency(ctx, req.IdempotencyKey); isUsed {
+				return s.GetDetailedTransaction(ctx, existingEntry.ID)
+			}
+		}
 		return nil, err
 	}
 
@@ -656,4 +704,51 @@ func (s *Service) GetDetailedTransaction(ctx context.Context, entryID uuid.UUID)
 		TotalCredit: totalCredit,
 		IsBalanced:  (totalDebit == totalCredit),
 	}, nil
+}
+
+// ReverseTransaction creates a new reversing journal entry that mirrors the original postings
+// with debits and credits swapped. The original entry is never modified (append-only).
+func (s *Service) ReverseTransaction(ctx context.Context, originalEntryID uuid.UUID, reason string) (*DetailedJournalEntry, error) {
+	original, postings, err := s.repo.GetJournalEntry(ctx, originalEntryID)
+	if err != nil {
+		return nil, fmt.Errorf("original transaction not found: %w", err)
+	}
+
+	if reason == "" {
+		reason = "Reversal"
+	}
+
+	reversalRef := fmt.Sprintf("REVERSAL-%s", original.ID.String())
+
+	// Check if already reversed (idempotency on reversal)
+	if isUsed, existingEntry, _ := s.repo.CheckIdempotency(ctx, reversalRef); isUsed {
+		return s.GetDetailedTransaction(ctx, existingEntry.ID)
+	}
+
+	reversalEntry := &JournalEntry{
+		ID:              uuid.New(),
+		TransactionType: original.TransactionType,
+		ReferenceID:     reversalRef,
+		Description:     fmt.Sprintf("[REVERSAL] %s — %s", original.Description, reason),
+		CreatedAt:       time.Now().UTC(),
+	}
+
+	// Create reversed postings: swap debit/credit direction
+	reversedPostings := make([]*LedgerPosting, len(postings))
+	for i, p := range postings {
+		reversedPostings[i] = &LedgerPosting{
+			ID:             uuid.New(),
+			JournalEntryID: reversalEntry.ID,
+			AccountID:      p.AccountID,
+			Amount:         p.Amount,
+			IsCredit:       !p.IsCredit, // Swap direction
+			CreatedAt:      reversalEntry.CreatedAt,
+		}
+	}
+
+	if err := s.repo.PostJournalEntry(ctx, reversalEntry, reversedPostings, reversalRef); err != nil {
+		return nil, err
+	}
+
+	return s.GetDetailedTransaction(ctx, reversalEntry.ID)
 }

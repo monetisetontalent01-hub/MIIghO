@@ -13,12 +13,13 @@ import (
 )
 
 var (
-	ErrAccountNotFound     = errors.New("ledger account not found")
-	ErrInsufficientFunds   = errors.New("insufficient funds for transaction")
-	ErrImbalancedEntry     = errors.New("journal entry debits do not match credits (double-entry violation)")
-	ErrDuplicateIdempotency = errors.New("idempotency key already used")
-	ErrInvalidAmount       = errors.New("transaction amount must be strictly greater than zero")
-	ErrInvalidCurrency     = errors.New("invalid or mismatched currency")
+	ErrAccountNotFound      = errors.New("ledger account not found")
+	ErrInsufficientFunds    = errors.New("insufficient funds for transaction")
+	ErrImbalancedEntry      = errors.New("journal entry debits do not match credits (double-entry violation)")
+	ErrDuplicateIdempotency  = errors.New("idempotency key already used")
+	ErrIdempotencyConflict  = errors.New("idempotency key conflict: payload does not match existing transaction")
+	ErrInvalidAmount        = errors.New("transaction amount must be strictly greater than zero")
+	ErrInvalidCurrency      = errors.New("invalid or mismatched currency")
 )
 
 // Repository defines data access methods for double-entry ledger.
@@ -113,6 +114,20 @@ func (r *MemoryRepository) seedSystemAccounts() {
 func (r *MemoryRepository) CreateAccount(ctx context.Context, account *LedgerAccount) error {
 	r.mu.Lock()
 	defer r.mu.Unlock()
+
+	if account.UserID != nil {
+		key := fmt.Sprintf("%s:%s", account.UserID.String(), account.Currency)
+		if existingID, exists := r.userAccounts[key]; exists {
+			account.ID = existingID
+			return nil
+		}
+	} else {
+		key := fmt.Sprintf("%s:%s", account.Name, account.Currency)
+		if existingID, exists := r.sysAccounts[key]; exists {
+			account.ID = existingID
+			return nil
+		}
+	}
 
 	if account.ID == uuid.Nil {
 		account.ID = uuid.New()

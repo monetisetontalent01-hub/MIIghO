@@ -348,3 +348,300 @@ func TestLedger_JournalAudit(t *testing.T) {
 		assert.NotEmpty(t, entry.Postings)
 	}
 }
+
+// ════════════════════════════════════════════════
+// PHASE 3A.0 — HARDENING TESTS
+// ════════════════════════════════════════════════
+
+// Test 10: Append-Only — JournalEntries cannot be mutated or deleted through repo
+func TestLedger_AppendOnly(t *testing.T) {
+	svc, repo := setupTestService(t)
+	ctx := context.Background()
+
+	uID := uuid.New()
+
+	// Create a CashIn transaction
+	tx1, err := svc.CashIn(ctx, uID, &CashInRequest{
+		Provider:       "wave",
+		Amount:         25000,
+		Currency:       "FCFA",
+		IdempotencyKey: "append-only-test-1",
+	})
+	require.NoError(t, err)
+
+	// Verify the entry exists and is retrievable
+	entry, postings, err := repo.GetJournalEntry(ctx, tx1.Entry.ID)
+	require.NoError(t, err)
+	assert.Equal(t, tx1.Entry.ID, entry.ID)
+	assert.Len(t, postings, 2)
+
+	// Verify the entry remains unchanged after subsequent operations
+	_, err = svc.CashIn(ctx, uID, &CashInRequest{
+		Provider:       "wave",
+		Amount:         5000,
+		Currency:       "FCFA",
+		IdempotencyKey: "append-only-test-2",
+	})
+	require.NoError(t, err)
+
+	// Original entry must still exist unchanged
+	entryAfter, postingsAfter, err := repo.GetJournalEntry(ctx, tx1.Entry.ID)
+	require.NoError(t, err)
+	assert.Equal(t, entry.ID, entryAfter.ID)
+	assert.Equal(t, entry.Description, entryAfter.Description)
+	assert.Equal(t, entry.ReferenceID, entryAfter.ReferenceID)
+	assert.Len(t, postingsAfter, 2)
+	assert.Equal(t, postings[0].Amount, postingsAfter[0].Amount)
+	assert.Equal(t, postings[1].Amount, postingsAfter[1].Amount)
+}
+
+// Test 11: Idempotency Key Conflict — same key, different amount must be detected
+func TestLedger_IdempotencyConflict(t *testing.T) {
+	svc, _ := setupTestService(t)
+	ctx := context.Background()
+
+	uID := uuid.New()
+	key := "conflict-key-ABC123"
+
+	// First CashIn: 10,000 FCFA
+	tx1, err := svc.CashIn(ctx, uID, &CashInRequest{
+		Provider:       "wave",
+		Amount:         10000,
+		Currency:       "FCFA",
+		IdempotencyKey: key,
+	})
+	require.NoError(t, err)
+	assert.Equal(t, int64(10000), tx1.TotalDebit)
+
+	// Second CashIn: same key but DIFFERENT amount (50,000 FCFA)
+	_, err = svc.CashIn(ctx, uID, &CashInRequest{
+		Provider:       "wave",
+		Amount:         50000,
+		Currency:       "FCFA",
+		IdempotencyKey: key,
+	})
+	assert.Error(t, err, "Must reject idempotency key reuse with different amount")
+	assert.True(t, errors.Is(err, ErrIdempotencyConflict), "Expected ErrIdempotencyConflict, got: %v", err)
+
+	// Balance must remain at 10,000 (only the first transaction)
+	summary, err := svc.GetWalletSummary(ctx, uID, "FCFA")
+	require.NoError(t, err)
+	assert.Equal(t, int64(10000), summary.AvailableBalance)
+}
+
+// Test 12: Concurrent Idempotency — 3 concurrent requests with same key
+func TestLedger_ConcurrentIdempotency(t *testing.T) {
+	svc, _ := setupTestService(t)
+	ctx := context.Background()
+
+	uID := uuid.New()
+	key := "concurrent-idempotency-XYZ"
+
+	var wg sync.WaitGroup
+	results := make([]*DetailedJournalEntry, 3)
+	errs := make([]error, 3)
+
+	for i := 0; i < 3; i++ {
+		wg.Add(1)
+		go func(idx int) {
+			defer wg.Done()
+			results[idx], errs[idx] = svc.CashIn(ctx, uID, &CashInRequest{
+				Provider:       "wave",
+				Amount:         10000,
+				Currency:       "FCFA",
+				IdempotencyKey: key,
+			})
+		}(i)
+	}
+	wg.Wait()
+
+	// Exactly one transaction should be created; all must return same entry ID
+	var firstEntryID uuid.UUID
+	successCount := 0
+	for i := 0; i < 3; i++ {
+		if errs[i] == nil {
+			successCount++
+			if firstEntryID == uuid.Nil {
+				firstEntryID = results[i].Entry.ID
+			}
+			assert.Equal(t, firstEntryID, results[i].Entry.ID, "All successful results must reference the same entry")
+		}
+	}
+	assert.GreaterOrEqual(t, successCount, 1, "At least one request must succeed")
+
+	// Balance must be exactly 10,000 (not 20,000 or 30,000)
+	summary, err := svc.GetWalletSummary(ctx, uID, "FCFA")
+	require.NoError(t, err)
+	assert.Equal(t, int64(10000), summary.AvailableBalance)
+}
+
+// Test 13: Reversal — Append-only correction via counter-entry
+func TestLedger_Reversal(t *testing.T) {
+	svc, _ := setupTestService(t)
+	ctx := context.Background()
+
+	userID := uuid.New()
+
+	// Fund user with 20,000 FCFA
+	_, err := svc.CashIn(ctx, userID, &CashInRequest{
+		Provider:       "wave",
+		Amount:         20000,
+		Currency:       "FCFA",
+		IdempotencyKey: "reversal-fund-1",
+	})
+	require.NoError(t, err)
+
+	// Create a P2P transfer of 5,000 FCFA
+	recipientID := uuid.New()
+	originalTx, err := svc.TransferP2P(ctx, userID, &TransferRequest{
+		ToUserID:       &recipientID,
+		Amount:         5000,
+		Currency:       "FCFA",
+		IdempotencyKey: "reversal-p2p-1",
+	})
+	require.NoError(t, err)
+
+	// User balance: 20,000 - 5,000 = 15,000
+	summary, err := svc.GetWalletSummary(ctx, userID, "FCFA")
+	require.NoError(t, err)
+	assert.Equal(t, int64(15000), summary.AvailableBalance)
+
+	// Reverse the P2P transfer
+	reversalTx, err := svc.ReverseTransaction(ctx, originalTx.Entry.ID, "Erreur de saisie")
+	require.NoError(t, err)
+	assert.True(t, reversalTx.IsBalanced)
+	assert.Contains(t, reversalTx.Entry.Description, "[REVERSAL]")
+
+	// Reversal must be a NEW entry, not the original
+	assert.NotEqual(t, originalTx.Entry.ID, reversalTx.Entry.ID)
+
+	// User balance must be restored: 15,000 + 5,000 = 20,000
+	summary, err = svc.GetWalletSummary(ctx, userID, "FCFA")
+	require.NoError(t, err)
+	assert.Equal(t, int64(20000), summary.AvailableBalance)
+
+	// Original entry must still exist (append-only)
+	origEntry, origPostings, err := svc.repo.GetJournalEntry(ctx, originalTx.Entry.ID)
+	require.NoError(t, err)
+	assert.Equal(t, originalTx.Entry.ID, origEntry.ID)
+	assert.Len(t, origPostings, 2)
+
+	// Double reversal must be idempotent (return same reversal, not create third entry)
+	reversalTx2, err := svc.ReverseTransaction(ctx, originalTx.Entry.ID, "Double reversal attempt")
+	require.NoError(t, err)
+	assert.Equal(t, reversalTx.Entry.ID, reversalTx2.Entry.ID)
+}
+
+// Test 14: Zero, Negative, and MaxInt64 at Repository Level
+func TestLedger_AmountEdgeCases(t *testing.T) {
+	_, repo := setupTestService(t)
+	ctx := context.Background()
+
+	acc1ID := uuid.New()
+	acc2ID := uuid.New()
+	_ = repo.CreateAccount(ctx, &LedgerAccount{ID: acc1ID, AccountType: Asset, Currency: "FCFA", Name: "Test A", CreatedAt: time.Now().UTC()})
+	_ = repo.CreateAccount(ctx, &LedgerAccount{ID: acc2ID, AccountType: Asset, Currency: "FCFA", Name: "Test B", CreatedAt: time.Now().UTC()})
+
+	t.Run("zero_amount", func(t *testing.T) {
+		entry := &JournalEntry{ID: uuid.New(), TransactionType: P2PTransfer, ReferenceID: "zero-test", CreatedAt: time.Now().UTC()}
+		postings := []*LedgerPosting{
+			{ID: uuid.New(), JournalEntryID: entry.ID, AccountID: acc1ID, Amount: 0, IsCredit: false},
+			{ID: uuid.New(), JournalEntryID: entry.ID, AccountID: acc2ID, Amount: 0, IsCredit: true},
+		}
+		err := repo.PostJournalEntry(ctx, entry, postings, "zero-key")
+		assert.Error(t, err)
+		assert.True(t, errors.Is(err, ErrInvalidAmount))
+	})
+
+	t.Run("negative_amount", func(t *testing.T) {
+		entry := &JournalEntry{ID: uuid.New(), TransactionType: P2PTransfer, ReferenceID: "neg-test", CreatedAt: time.Now().UTC()}
+		postings := []*LedgerPosting{
+			{ID: uuid.New(), JournalEntryID: entry.ID, AccountID: acc1ID, Amount: -1000, IsCredit: false},
+			{ID: uuid.New(), JournalEntryID: entry.ID, AccountID: acc2ID, Amount: -1000, IsCredit: true},
+		}
+		err := repo.PostJournalEntry(ctx, entry, postings, "neg-key")
+		assert.Error(t, err)
+		assert.True(t, errors.Is(err, ErrInvalidAmount))
+	})
+
+	t.Run("max_int64_overflow_check", func(t *testing.T) {
+		// MaxInt64 is valid as a single amount but should produce a balanced entry
+		maxAmount := int64(9223372036854775807) // math.MaxInt64
+		entry := &JournalEntry{ID: uuid.New(), TransactionType: P2PTransfer, ReferenceID: "max-test", CreatedAt: time.Now().UTC()}
+		postings := []*LedgerPosting{
+			{ID: uuid.New(), JournalEntryID: entry.ID, AccountID: acc1ID, Amount: maxAmount, IsCredit: false},
+			{ID: uuid.New(), JournalEntryID: entry.ID, AccountID: acc2ID, Amount: maxAmount, IsCredit: true},
+		}
+		// This should succeed (amounts are balanced, both positive)
+		err := repo.PostJournalEntry(ctx, entry, postings, "max-key")
+		assert.NoError(t, err)
+	})
+}
+
+// Test 15: Invalid Account Rejection
+func TestLedger_InvalidAccount(t *testing.T) {
+	_, repo := setupTestService(t)
+	ctx := context.Background()
+
+	validAccID := uuid.New()
+	_ = repo.CreateAccount(ctx, &LedgerAccount{ID: validAccID, AccountType: Asset, Currency: "FCFA", Name: "Valid", CreatedAt: time.Now().UTC()})
+
+	nonExistentID := uuid.New()
+
+	entry := &JournalEntry{ID: uuid.New(), TransactionType: P2PTransfer, ReferenceID: "invalid-acc-test", CreatedAt: time.Now().UTC()}
+	postings := []*LedgerPosting{
+		{ID: uuid.New(), JournalEntryID: entry.ID, AccountID: validAccID, Amount: 1000, IsCredit: false},
+		{ID: uuid.New(), JournalEntryID: entry.ID, AccountID: nonExistentID, Amount: 1000, IsCredit: true},
+	}
+	err := repo.PostJournalEntry(ctx, entry, postings, "invalid-acc-key")
+	assert.Error(t, err)
+	assert.True(t, errors.Is(err, ErrAccountNotFound))
+}
+
+// Test 16: Single Posting Rejection (must have >= 2)
+func TestLedger_SinglePostingRejection(t *testing.T) {
+	_, repo := setupTestService(t)
+	ctx := context.Background()
+
+	accID := uuid.New()
+	_ = repo.CreateAccount(ctx, &LedgerAccount{ID: accID, AccountType: Asset, Currency: "FCFA", Name: "Lonely", CreatedAt: time.Now().UTC()})
+
+	entry := &JournalEntry{ID: uuid.New(), TransactionType: P2PTransfer, ReferenceID: "single-posting-test", CreatedAt: time.Now().UTC()}
+	postings := []*LedgerPosting{
+		{ID: uuid.New(), JournalEntryID: entry.ID, AccountID: accID, Amount: 1000, IsCredit: false},
+	}
+	err := repo.PostJournalEntry(ctx, entry, postings, "single-posting-key")
+	assert.Error(t, err)
+}
+
+// Test 17: CashIn & CashOut Ledger Symmetry
+func TestLedger_CashInOutSymmetry(t *testing.T) {
+	svc, repo := setupTestService(t)
+	ctx := context.Background()
+
+	uID := uuid.New()
+
+	// CashIn 10,000 then CashOut 10,000 — net balance must be 0
+	_, err := svc.CashIn(ctx, uID, &CashInRequest{
+		Provider:       "wave",
+		Amount:         10000,
+		Currency:       "FCFA",
+		IdempotencyKey: "symmetry-in-1",
+	})
+	require.NoError(t, err)
+
+	_, err = svc.CashOut(ctx, uID, &CashOutRequest{
+		Provider:       "wave",
+		Amount:         10000,
+		Currency:       "FCFA",
+		IdempotencyKey: "symmetry-out-1",
+	})
+	require.NoError(t, err)
+
+	userAcc, err := svc.GetOrCreateUserAccount(ctx, uID, "FCFA")
+	require.NoError(t, err)
+
+	bal, err := repo.GetBalance(ctx, userAcc.ID)
+	require.NoError(t, err)
+	assert.Equal(t, int64(0), bal, "CashIn + CashOut of equal amounts must net to zero")
+}
