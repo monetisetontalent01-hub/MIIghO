@@ -98,3 +98,53 @@ type MediaUploaded struct {
 
 func (e MediaUploaded) Topic() string        { return "media.uploaded" }
 func (e MediaUploaded) Payload() interface{} { return e }
+
+type MessageUpdated struct {
+	MessageID      string `json:"message_id"`
+	ConversationID string `json:"conversation_id"`
+	SenderID       string `json:"sender_id"`
+	Content        string `json:"content"`
+	EditedAt       string `json:"edited_at"`
+}
+
+func (e MessageUpdated) Topic() string        { return "message.updated" }
+func (e MessageUpdated) Payload() interface{} { return e }
+
+type MessageDeleted struct {
+	MessageID      string `json:"message_id"`
+	ConversationID string `json:"conversation_id"`
+	SenderID       string `json:"sender_id"`
+	DeletedAt      string `json:"deleted_at"`
+}
+
+func (e MessageDeleted) Topic() string        { return "message.deleted" }
+func (e MessageDeleted) Payload() interface{} { return e }
+
+type ReactionAdded struct {
+	MessageID      string `json:"message_id"`
+	ConversationID string `json:"conversation_id"`
+	UserID         string `json:"user_id"`
+	Emoji          string `json:"emoji"`
+}
+
+func (e ReactionAdded) Topic() string        { return "reaction.added" }
+func (e ReactionAdded) Payload() interface{} { return e }
+
+type ReactionRemoved struct {
+	MessageID      string `json:"message_id"`
+	ConversationID string `json:"conversation_id"`
+	UserID         string `json:"user_id"`
+	Emoji          string `json:"emoji"`
+}
+
+func (e ReactionRemoved) Topic() string        { return "reaction.removed" }
+func (e ReactionRemoved) Payload() interface{} { return e }
+
+type UserTyping struct {
+	ConversationID string `json:"conversation_id"`
+	UserID         string `json:"user_id"`
+	IsTyping       bool   `json:"is_typing"`
+}
+
+func (e UserTyping) Topic() string        { return "user.typing" }
+func (e UserTyping) Payload() interface{} { return e }

@@ -1,9 +1,12 @@
 package chat
 
 import (
+	"context"
+	"encoding/json"
 	"net/http"
 	"time"
 
+	"github.com/google/uuid"
 	"github.com/gorilla/websocket"
 	"github.com/labstack/echo/v4"
 	"github.com/miigho/miigho/internal/platform/identity"
@@ -25,7 +28,7 @@ const (
 	maxMessageSize = 512 * 1024
 )
 
-func HandleWebSocket(hub *Hub) echo.HandlerFunc {
+func HandleWebSocket(hub *Hub, service *ChatService) echo.HandlerFunc {
 	return func(c echo.Context) error {
 		userIdent, err := identity.GetUserIdentity(c)
 		if err != nil {
@@ -45,13 +48,13 @@ func HandleWebSocket(hub *Hub) echo.HandlerFunc {
 		hub.register <- conn
 
 		go writePump(conn)
-		go readPump(conn, hub)
+		go readPump(conn, hub, service)
 
 		return nil
 	}
 }
 
-func readPump(conn *Connection, hub *Hub) {
+func readPump(conn *Connection, hub *Hub, service *ChatService) {
 	defer func() {
 		hub.unregister <- conn
 		conn.ws.Close()
@@ -68,8 +71,56 @@ func readPump(conn *Connection, hub *Hub) {
 			}
 			break
 		}
-		// In a real app, unmarshal protobuf WsEnvelope here and dispatch
-		_ = message
+
+		// Parse inbound client envelopes
+		var env WsEnvelope
+		if err := json.Unmarshal(message, &env); err == nil {
+			switch env.Type {
+			case "ping":
+				pongEnv := WsEnvelope{
+					Type:      "pong",
+					Timestamp: time.Now(),
+				}
+				if payload, mErr := json.Marshal(pongEnv); mErr == nil {
+					select {
+					case conn.send <- payload:
+					default:
+					}
+				}
+
+			case "typing":
+				if env.ConversationID != "" && service != nil {
+					if convID, parseErr := uuid.Parse(env.ConversationID); parseErr == nil {
+						// Broadcast typing indicator to other conversation members
+						isTyping := true
+						if val, ok := env.Data.(bool); ok {
+							isTyping = val
+						}
+						typingPayload, _ := json.Marshal(WsEnvelope{
+							Type:           "user.typing",
+							ConversationID: env.ConversationID,
+							UserID:         conn.userID.String(),
+							Data: map[string]interface{}{
+								"user_id":   conn.userID.String(),
+								"is_typing": isTyping,
+							},
+							Timestamp: time.Now(),
+						})
+
+						members, memErr := service.repo.GetConversationMembers(context.Background(), convID)
+						if memErr == nil {
+							var recipientMembers []uuid.UUID
+							for _, m := range members {
+								if m != conn.userID {
+									recipientMembers = append(recipientMembers, m)
+								}
+							}
+							hub.BroadcastToUsers(recipientMembers, typingPayload)
+						}
+					}
+				}
+			}
+		}
 	}
 }
 
@@ -87,7 +138,7 @@ func writePump(conn *Connection) {
 				conn.ws.WriteMessage(websocket.CloseMessage, []byte{})
 				return
 			}
-			w, err := conn.ws.NextWriter(websocket.BinaryMessage)
+			w, err := conn.ws.NextWriter(websocket.TextMessage)
 			if err != nil {
 				return
 			}

@@ -60,13 +60,14 @@ type Message struct {
 	SenderID           uuid.UUID                      `json:"sender_id"`
 	ReplyToID          *uuid.UUID                     `json:"reply_to_id"`
 	Type               MessageType                    `json:"type"`
-	Content            []byte                         `json:"content"` // Encrypted content
-	Metadata           map[string]interface{}         `json:"metadata"`
-	EncryptionMetadata *encryption.EncryptionMetadata `json:"encryption_metadata"`
+	Content            []byte                         `json:"content"` // Encrypted content or UTF-8 text
+	Metadata           map[string]interface{}         `json:"metadata,omitempty"`
+	EncryptionMetadata *encryption.EncryptionMetadata `json:"encryption_metadata,omitempty"`
 	Status             MessageStatus                  `json:"status"`
-	EditedAt           *time.Time                     `json:"edited_at"`
+	Reactions          []MessageReaction              `json:"reactions,omitempty"`
+	EditedAt           *time.Time                     `json:"edited_at,omitempty"`
 	UpdatedAt          time.Time                      `json:"updated_at"`
-	DeletedAt          *time.Time                     `json:"deleted_at"`
+	DeletedAt          *time.Time                     `json:"deleted_at,omitempty"`
 	CreatedAt          time.Time                      `json:"created_at"`
 }
 
@@ -83,4 +84,40 @@ type ConversationWithLastMessage struct {
 	Conversation
 	LastMessage *Message `json:"last_message"`
 	UnreadCount int      `json:"unread_count"`
+}
+
+// Request & WebSocket DTOs
+
+type CreateConversationRequest struct {
+	Type        ConversationType `json:"type"`
+	RecipientID *string          `json:"recipient_id,omitempty"`
+	Name        *string          `json:"name,omitempty"`
+	MemberIDs   []string         `json:"member_ids,omitempty"`
+}
+
+type SendMessageRequest struct {
+	Content   string                 `json:"content"`
+	Type      string                 `json:"type"`
+	ReplyToID *string                `json:"reply_to_id,omitempty"`
+	Metadata  map[string]interface{} `json:"metadata,omitempty"`
+}
+
+type UpdateMessageRequest struct {
+	Content string `json:"content"`
+}
+
+type ReactionRequest struct {
+	Emoji string `json:"emoji"`
+}
+
+type MarkReadRequest struct {
+	MessageID string `json:"message_id"`
+}
+
+type WsEnvelope struct {
+	Type           string      `json:"type"`
+	ConversationID string      `json:"conversation_id,omitempty"`
+	UserID         string      `json:"user_id,omitempty"`
+	Data           interface{} `json:"data,omitempty"`
+	Timestamp      time.Time   `json:"timestamp"`
 }

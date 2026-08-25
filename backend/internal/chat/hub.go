@@ -69,3 +69,23 @@ func (h *Hub) BroadcastToUser(userID uuid.UUID, message []byte) {
 		}
 	}
 }
+
+func (h *Hub) BroadcastToUsers(userIDs []uuid.UUID, message []byte) {
+	h.mu.RLock()
+	defer h.mu.RUnlock()
+
+	for _, uid := range userIDs {
+		for _, conn := range h.connections[uid] {
+			select {
+			case conn.send <- message:
+			default:
+			}
+		}
+	}
+}
+
+func (h *Hub) IsUserOnline(userID uuid.UUID) bool {
+	h.mu.RLock()
+	defer h.mu.RUnlock()
+	return len(h.connections[userID]) > 0
+}

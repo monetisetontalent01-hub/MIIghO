@@ -115,6 +115,7 @@ func main() {
 	// Initialize WebSocket hub for real-time messaging
 	hub := chat.NewHub()
 	go hub.Run()
+	chatService.SetHub(hub)
 	logger.Info().Msg("WebSocket Hub running")
 
 	// Initialize handlers
@@ -156,7 +157,7 @@ func main() {
 	})
 
 	// WebSocket endpoint with auth
-	e.GET("/ws", chat.HandleWebSocket(hub), middleware.WsAuthMiddleware(valkeyClient, pgPool))
+	e.GET("/ws", chat.HandleWebSocket(hub, chatService), middleware.WsAuthMiddleware(valkeyClient, pgPool))
 
 	// API v1 routes
 	apiV1 := e.Group("/api/v1")
