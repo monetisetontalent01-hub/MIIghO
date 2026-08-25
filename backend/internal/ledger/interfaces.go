@@ -30,6 +30,7 @@ const (
 	Fee                TransactionType = "fee"
 	MerchantPayment    TransactionType = "merchant_payment"
 	MerchantRefund     TransactionType = "merchant_refund"
+	MerchantSettlement TransactionType = "merchant_settlement"
 )
 
 // LedgerAccount represents an account in the double-entry system.

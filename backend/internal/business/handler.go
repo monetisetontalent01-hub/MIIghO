@@ -41,6 +41,13 @@ func (h *Handler) RegisterRoutes(g *echo.Group, authMiddleware echo.MiddlewareFu
 	// Financial Account (derived from ledger)
 	biz.GET("/:id/account", h.handleGetBusinessAccount)
 
+	// Merchant Settlements (Phase 3A.4)
+	biz.GET("/:id/settlements/eligible", h.handleGetEligibleSettlement)
+	biz.POST("/:id/settlements", h.handleCreateSettlement)
+	biz.GET("/:id/settlements", h.handleListSettlements)
+	biz.GET("/:id/settlements/:settlementId", h.handleGetSettlement)
+	biz.POST("/:id/settlements/:settlementId/process", h.handleProcessSettlement)
+
 	// Merchant QR Codes
 	biz.POST("/:id/merchant/qr", h.handleCreateMerchantQR)
 	biz.GET("/:id/merchant/qr", h.handleGetMerchantQRs)
@@ -629,4 +636,166 @@ func (h *Handler) handleGetRefunds(c echo.Context) error {
 	}
 
 	return common.SuccessResponse(c, refunds)
+}
+
+// ════════════════════════════════════════════════
+// SETTLEMENT HANDLERS (PHASE 3A.4)
+// ════════════════════════════════════════════════
+
+func (h *Handler) handleGetEligibleSettlement(c echo.Context) error {
+	userID, err := h.getUserID(c)
+	if err != nil {
+		return common.ErrUnauthorized
+	}
+
+	businessID, err := uuid.Parse(c.Param("id"))
+	if err != nil {
+		return echo.NewHTTPError(http.StatusBadRequest, "Invalid Business ID")
+	}
+
+	calc, err := h.service.CalculateEligibleSettlement(c.Request().Context(), userID, businessID)
+	if err != nil {
+		if errors.Is(err, ErrBusinessNotFound) {
+			return common.ErrNotFound
+		}
+		if errors.Is(err, ErrUnauthorizedAccess) || errors.Is(err, ErrInsufficientPermission) {
+			return echo.NewHTTPError(http.StatusForbidden, err.Error())
+		}
+		return echo.NewHTTPError(http.StatusBadRequest, err.Error())
+	}
+
+	return common.SuccessResponse(c, calc)
+}
+
+func (h *Handler) handleCreateSettlement(c echo.Context) error {
+	userID, err := h.getUserID(c)
+	if err != nil {
+		return common.ErrUnauthorized
+	}
+
+	businessID, err := uuid.Parse(c.Param("id"))
+	if err != nil {
+		return echo.NewHTTPError(http.StatusBadRequest, "Invalid Business ID")
+	}
+
+	var req CreateSettlementRequest
+	if err := c.Bind(&req); err != nil {
+		return echo.NewHTTPError(http.StatusBadRequest, "Invalid request input")
+	}
+
+	receipt, err := h.service.CreateSettlement(c.Request().Context(), userID, businessID, &req)
+	if err != nil {
+		if errors.Is(err, ErrBusinessNotFound) {
+			return common.ErrNotFound
+		}
+		if errors.Is(err, ErrUnauthorizedAccess) || errors.Is(err, ErrInsufficientPermission) {
+			return echo.NewHTTPError(http.StatusForbidden, err.Error())
+		}
+		if errors.Is(err, ErrNoEligiblePayments) || errors.Is(err, ErrAlreadyFullySettled) {
+			return echo.NewHTTPError(http.StatusConflict, err.Error())
+		}
+		if errors.Is(err, ErrOverSettlement) || errors.Is(err, ErrInvalidSettlementAmount) || errors.Is(err, ErrSettlementCurrencyMismatch) {
+			return echo.NewHTTPError(http.StatusUnprocessableEntity, err.Error())
+		}
+		if errors.Is(err, ErrBusinessClosed) || errors.Is(err, ErrBusinessSuspended) {
+			return echo.NewHTTPError(http.StatusConflict, err.Error())
+		}
+		return echo.NewHTTPError(http.StatusBadRequest, err.Error())
+	}
+
+	return c.JSON(http.StatusCreated, map[string]interface{}{
+		"status": "success",
+		"data":   receipt,
+	})
+}
+
+func (h *Handler) handleProcessSettlement(c echo.Context) error {
+	userID, err := h.getUserID(c)
+	if err != nil {
+		return common.ErrUnauthorized
+	}
+
+	businessID, err := uuid.Parse(c.Param("id"))
+	if err != nil {
+		return echo.NewHTTPError(http.StatusBadRequest, "Invalid Business ID")
+	}
+
+	settlementID, err := uuid.Parse(c.Param("settlementId"))
+	if err != nil {
+		return echo.NewHTTPError(http.StatusBadRequest, "Invalid Settlement ID")
+	}
+
+	receipt, err := h.service.ProcessSettlement(c.Request().Context(), userID, businessID, settlementID)
+	if err != nil {
+		if errors.Is(err, ErrSettlementNotFound) || errors.Is(err, ErrBusinessNotFound) {
+			return common.ErrNotFound
+		}
+		if errors.Is(err, ErrUnauthorizedAccess) || errors.Is(err, ErrInsufficientPermission) {
+			return echo.NewHTTPError(http.StatusForbidden, err.Error())
+		}
+		if errors.Is(err, ErrSettlementNotPending) || errors.Is(err, ErrSettlementAlreadyProcessed) {
+			return echo.NewHTTPError(http.StatusConflict, err.Error())
+		}
+		if errors.Is(err, ErrPaymentFailed) {
+			return echo.NewHTTPError(http.StatusPaymentRequired, err.Error())
+		}
+		return echo.NewHTTPError(http.StatusBadRequest, err.Error())
+	}
+
+	return common.SuccessResponse(c, receipt)
+}
+
+func (h *Handler) handleGetSettlement(c echo.Context) error {
+	userID, err := h.getUserID(c)
+	if err != nil {
+		return common.ErrUnauthorized
+	}
+
+	businessID, err := uuid.Parse(c.Param("id"))
+	if err != nil {
+		return echo.NewHTTPError(http.StatusBadRequest, "Invalid Business ID")
+	}
+
+	settlementID, err := uuid.Parse(c.Param("settlementId"))
+	if err != nil {
+		return echo.NewHTTPError(http.StatusBadRequest, "Invalid Settlement ID")
+	}
+
+	receipt, err := h.service.GetSettlement(c.Request().Context(), userID, businessID, settlementID)
+	if err != nil {
+		if errors.Is(err, ErrSettlementNotFound) || errors.Is(err, ErrBusinessNotFound) {
+			return common.ErrNotFound
+		}
+		if errors.Is(err, ErrUnauthorizedAccess) || errors.Is(err, ErrInsufficientPermission) {
+			return echo.NewHTTPError(http.StatusForbidden, err.Error())
+		}
+		return echo.NewHTTPError(http.StatusBadRequest, err.Error())
+	}
+
+	return common.SuccessResponse(c, receipt)
+}
+
+func (h *Handler) handleListSettlements(c echo.Context) error {
+	userID, err := h.getUserID(c)
+	if err != nil {
+		return common.ErrUnauthorized
+	}
+
+	businessID, err := uuid.Parse(c.Param("id"))
+	if err != nil {
+		return echo.NewHTTPError(http.StatusBadRequest, "Invalid Business ID")
+	}
+
+	settlements, err := h.service.ListSettlements(c.Request().Context(), userID, businessID)
+	if err != nil {
+		if errors.Is(err, ErrBusinessNotFound) {
+			return common.ErrNotFound
+		}
+		if errors.Is(err, ErrUnauthorizedAccess) || errors.Is(err, ErrInsufficientPermission) {
+			return echo.NewHTTPError(http.StatusForbidden, err.Error())
+		}
+		return echo.NewHTTPError(http.StatusBadRequest, err.Error())
+	}
+
+	return common.SuccessResponse(c, settlements)
 }

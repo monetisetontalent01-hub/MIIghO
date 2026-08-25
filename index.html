@@ -1197,6 +1197,33 @@
                     </div>
                 </div>
 
+                <!-- Merchant Settlement Section (Phase 3A.4) -->
+                <div style="background: var(--bg-surface-2); border: 1px solid var(--border-subtle); border-radius: var(--radius-lg); padding: 20px; margin-bottom: 24px;">
+                    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 14px; flex-wrap: wrap; gap: 10px;">
+                        <div>
+                            <div style="display: flex; align-items: center; gap: 8px;">
+                                <h3 style="font-family: 'Outfit'; font-size: 18px; font-weight: 800;">⚡ Règlements Marchand (Settlements)</h3>
+                                <span class="status-dot badge-active" style="background: rgba(16, 185, 129, 0.15); color: #10B981;">PHASE 3A.4 ACTIVE</span>
+                            </div>
+                            <p style="font-size: 12px; color: var(--text-secondary); margin-top: 2px;">
+                                Calcul dérivé : <code>net_settleable = gross - refunded - already_settled</code>
+                            </p>
+                        </div>
+                        <div style="display: flex; align-items: center; gap: 12px;">
+                            <div style="text-align: right;">
+                                <span style="font-size: 11px; color: var(--text-muted);">Montant Éligible :</span>
+                                <div style="font-size: 18px; font-weight: 800; color: #10B981;" id="biz-settleable-amount">0 FCFA</div>
+                            </div>
+                            <button class="btn-action" style="background: #10B981; padding: 8px 14px; font-size: 12px;" onclick="openCreateSettlementModal()">⚡ Créer un Règlement</button>
+                        </div>
+                    </div>
+
+                    <!-- Settlements History Container -->
+                    <div id="biz-settlements-container" style="display: flex; flex-direction: column; gap: 10px;">
+                        <!-- Rempli dynamiquement par JS -->
+                    </div>
+                </div>
+
                 <!-- Members Management Section -->
                 <div style="background: var(--bg-surface-2); border: 1px solid var(--border-subtle); border-radius: var(--radius-lg); padding: 20px;">
                     <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px;">
@@ -1743,6 +1770,55 @@
                     }).join('');
                 }
             }
+
+            // Settlement calculations & rendering (Phase 3A.4)
+            const bizReceipts = merchantReceipts.filter(r => r.bizName === biz.displayName);
+            const totalGross = bizReceipts.reduce((acc, r) => acc + r.amount, 0);
+            const totalRefunded = bizReceipts.reduce((acc, r) => acc + (r.refunded || 0), 0);
+            const bizSettlements = merchantSettlements.filter(s => s.bizName === biz.displayName);
+            const activeSettled = bizSettlements
+                .filter(s => s.status === 'SUCCEEDED' || s.status === 'PENDING' || s.status === 'PROCESSING')
+                .reduce((acc, s) => acc + s.amount, 0);
+            const netSettleable = Math.max(0, totalGross - totalRefunded - activeSettled);
+
+            const settleableEl = document.getElementById('biz-settleable-amount');
+            if (settleableEl) {
+                settleableEl.innerText = `${netSettleable.toLocaleString()} ${biz.currency}`;
+            }
+
+            const settlementsContainer = document.getElementById('biz-settlements-container');
+            if (settlementsContainer) {
+                if (bizSettlements.length === 0) {
+                    settlementsContainer.innerHTML = `
+                        <div style="text-align: center; color: var(--text-secondary); font-size: 12px; padding: 16px 0;">
+                            Aucun lot de règlement initié.<br>
+                            <span style="font-size: 11px; color: var(--primary-light);">Les règlements regroupent les encaissements réussis nets de remboursements.</span>
+                        </div>
+                    `;
+                } else {
+                    settlementsContainer.innerHTML = bizSettlements.map(s => `
+                        <div style="display: flex; justify-content: space-between; align-items: center; background: var(--bg-surface-1); border: 1px solid var(--border-subtle); border-radius: var(--radius-md); padding: 12px 14px; gap: 10px;">
+                            <div>
+                                <div style="display: flex; align-items: center; gap: 6px;">
+                                    <span style="font-weight: 700; font-size: 13px; color: var(--text-primary);">Lot Settlement #${s.id}</span>
+                                    <span style="font-size: 10px; font-weight: 800; padding: 2px 6px; border-radius: 4px; background: ${s.status === 'SUCCEEDED' ? 'rgba(16,185,129,0.15)' : 'rgba(245,158,11,0.15)'}; color: ${s.status === 'SUCCEEDED' ? '#10B981' : '#F59E0B'};">
+                                        ${s.status}
+                                    </span>
+                                </div>
+                                <div style="font-size: 11px; color: var(--text-muted); font-family: monospace;">${s.date} • ${s.itemCount || 1} transactions incluses</div>
+                            </div>
+                            <div style="display: flex; align-items: center; gap: 10px;">
+                                <div style="font-weight: 800; font-size: 15px; color: ${s.status === 'SUCCEEDED' ? '#10B981' : 'var(--gold)'};">
+                                    ${s.amount.toLocaleString()} ${s.currency}
+                                </div>
+                                ${s.status === 'PENDING' ? `
+                                    <button class="btn-action" style="padding: 4px 10px; font-size: 11px; background: #10B981;" onclick="processSettlementInteractive('${s.id}')">⚡ Traiter (Sandbox)</button>
+                                ` : ''}
+                            </div>
+                        </div>
+                    `).join('');
+                }
+            }
         }
 
         function switchBusiness(bizKey) {
@@ -1949,6 +2025,7 @@
         // ════════════════════════════════════════════════
 
         let merchantReceipts = [];
+        let merchantSettlements = [];
 
         function revokeCurrentQR() {
             const biz = businessesData[activeBizKey];
@@ -2183,6 +2260,163 @@
                 </div>
 
                 <button class="btn-action" style="width: 100%;" onclick="closePayModal()">Fermer le Reçu de Remboursement</button>
+            `);
+        }
+
+        // ════════════════════════════════════════════════
+        // PHASE 3A.4 INTERACTIVE SETTLEMENT SIMULATOR
+        // ════════════════════════════════════════════════
+
+        function openCreateSettlementModal() {
+            const biz = businessesData[activeBizKey];
+            const bizReceipts = merchantReceipts.filter(r => r.bizName === biz.displayName);
+            const totalGross = bizReceipts.reduce((acc, r) => acc + r.amount, 0);
+            const totalRefunded = bizReceipts.reduce((acc, r) => acc + (r.refunded || 0), 0);
+            const bizSettlements = merchantSettlements.filter(s => s.bizName === biz.displayName);
+            const activeSettled = bizSettlements
+                .filter(s => s.status === 'SUCCEEDED' || s.status === 'PENDING' || s.status === 'PROCESSING')
+                .reduce((acc, s) => acc + s.amount, 0);
+            const netSettleable = Math.max(0, totalGross - totalRefunded - activeSettled);
+
+            if (netSettleable <= 0) {
+                alert('Aucun encaissement net éligible au règlement. Encaissez des paiements clients d’abord !');
+                return;
+            }
+
+            openModalContent(`
+                <h2 style="font-family: 'Outfit'; font-size: 20px; font-weight: 800; margin-bottom: 6px;">⚡ Créer un Lot de Règlement</h2>
+                <p style="color: var(--primary-light); font-size: 12px; margin-bottom: 16px;">Merchant Settlement (Phase 3A.4) • 100% Sandbox</p>
+                
+                <div style="display: flex; flex-direction: column; gap: 12px;">
+                    <div style="background: var(--bg-surface-2); border-radius: 10px; padding: 14px; border: 1px solid var(--border-subtle); font-size: 12px;">
+                        <div style="display: flex; justify-content: space-between; margin-bottom: 6px;">
+                            <span style="color: var(--text-muted);">Total Encaissements Bruts :</span>
+                            <span style="font-weight: 700;">${totalGross.toLocaleString()} ${biz.currency}</span>
+                        </div>
+                        <div style="display: flex; justify-content: space-between; margin-bottom: 6px;">
+                            <span style="color: var(--text-muted);">Total Remboursements Déduits :</span>
+                            <span style="font-weight: 700; color: #EF4444;">-${totalRefunded.toLocaleString()} ${biz.currency}</span>
+                        </div>
+                        <div style="display: flex; justify-content: space-between; margin-bottom: 6px;">
+                            <span style="color: var(--text-muted);">Déjà Réglé / En Cours :</span>
+                            <span style="font-weight: 700; color: var(--gold);">${activeSettled.toLocaleString()} ${biz.currency}</span>
+                        </div>
+                        <div style="display: flex; justify-content: space-between; padding-top: 6px; border-top: 1px dashed rgba(255,255,255,0.1);">
+                            <span style="color: var(--text-muted); font-weight: 700;">Net Éligible au Règlement :</span>
+                            <span style="font-weight: 800; font-size: 14px; color: #10B981;">${netSettleable.toLocaleString()} ${biz.currency}</span>
+                        </div>
+                    </div>
+
+                    <div>
+                        <label style="font-size: 12px; font-weight: 700; color: var(--text-secondary);">Montant du Lot à Régler (${biz.currency})</label>
+                        <input type="number" id="settlement-amount-input" value="${netSettleable}" max="${netSettleable}" min="1" style="width: 100%; padding: 10px; border-radius: 10px; border: 1px solid var(--border-subtle); background: var(--bg-surface-2); color: var(--text-primary); margin-top: 4px; font-size: 16px; font-weight: 700;">
+                    </div>
+
+                    <div style="background: rgba(16, 185, 129, 0.08); border: 1px solid rgba(16, 185, 129, 0.2); border-radius: 8px; padding: 10px; font-size: 11px; color: var(--text-secondary);">
+                        📜 <strong>Principe Comptable</strong> :<br>
+                        • Statut initial : <strong>PENDING</strong> (Lot constitué sans double règlement)<br>
+                        • Le traitement déclenchera le transfert vers le compte de destination Sandbox.<br>
+                        • 0 appel PSP réel (100% Sandbox).
+                    </div>
+
+                    <button class="btn-action" style="width: 100%; margin-top: 8px; background: #10B981;" onclick="submitCreateSettlement(${netSettleable})">Créer le Lot (Statut PENDING)</button>
+                    <button class="btn-action" style="width: 100%; background: var(--bg-surface-2);" onclick="closePayModal()">Annuler</button>
+                </div>
+            `);
+        }
+
+        function submitCreateSettlement(maxAvailable) {
+            const biz = businessesData[activeBizKey];
+            const amount = parseInt(document.getElementById('settlement-amount-input').value, 10);
+
+            if (isNaN(amount) || amount <= 0) {
+                alert('Veuillez saisir un montant strictement supérieur à zéro.');
+                return;
+            }
+
+            if (amount > maxAvailable) {
+                alert(`Le montant demandé dépasse le net éligible (${maxAvailable.toLocaleString()} ${biz.currency}).`);
+                return;
+            }
+
+            const settlementId = 'SETTLE-' + Math.floor(100000 + Math.random() * 900000);
+            const now = new Date();
+
+            const newSettlement = {
+                id: settlementId,
+                bizName: biz.displayName,
+                amount: amount,
+                currency: biz.currency,
+                status: 'PENDING',
+                date: now.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' }),
+                itemCount: merchantReceipts.filter(r => r.bizName === biz.displayName).length || 1
+            };
+
+            merchantSettlements.unshift(newSettlement);
+            closePayModal();
+            renderBusinessView();
+
+            // Auto-prompt to process immediately or keep pending
+            alert(`Lot de Settlement #${settlementId} créé avec succès en statut PENDING (${amount.toLocaleString()} ${biz.currency}). Vous pouvez maintenant le traiter.`);
+        }
+
+        function processSettlementInteractive(settlementId) {
+            const st = merchantSettlements.find(s => s.id === settlementId);
+            if (!st) return;
+
+            const biz = businessesData[activeBizKey];
+
+            if ((biz.balance || 0) < st.amount) {
+                alert(`Solde insuffisant sur le compte entreprise (${(biz.balance || 0).toLocaleString()} ${biz.currency}) pour honorer ce règlement de ${st.amount.toLocaleString()} ${biz.currency}.`);
+                return;
+            }
+
+            // Execute Double-Entry Ledger Movement:
+            // Business Asset Account: CRÉDIT (balance decreases)
+            // System Settlement Pool (Liability): DÉBIT
+            biz.balance = (biz.balance || 0) - st.amount;
+            st.status = 'SUCCEEDED';
+            const journalId = 'JRNL-SETTLE-' + Math.floor(100000 + Math.random() * 900000);
+
+            renderBusinessView();
+
+            openModalContent(`
+                <div style="text-align: center; margin-bottom: 16px;">
+                    <div style="width: 56px; height: 56px; border-radius: 50%; background: rgba(16, 185, 129, 0.2); color: #10B981; font-size: 28px; display: flex; align-items: center; justify-content: center; margin: 0 auto 10px;">
+                        ⚡
+                    </div>
+                    <h2 style="font-family: 'Outfit'; font-size: 22px; font-weight: 800; color: #10B981;">Règlement Exécuté (SUCCEEDED) !</h2>
+                    <p style="font-size: 12px; color: var(--text-secondary);">Traitement Sandbox avec écriture Ledger en partie double</p>
+                </div>
+
+                <div style="background: var(--bg-surface-2); border-radius: 12px; padding: 16px; margin-bottom: 16px; display: flex; flex-direction: column; gap: 8px;">
+                    <div style="display: flex; justify-content: space-between; font-size: 13px;">
+                        <span style="color: var(--text-muted);">Montant Réglé :</span>
+                        <span style="font-weight: 800; font-size: 16px; color: #10B981;">${st.amount.toLocaleString()} ${st.currency}</span>
+                    </div>
+                    <div style="display: flex; justify-content: space-between; font-size: 12px;">
+                        <span style="color: var(--text-muted);">Marchand Bénéficiaire :</span>
+                        <span style="font-weight: 700;">${st.bizName}</span>
+                    </div>
+                    <div style="display: flex; justify-content: space-between; font-size: 12px;">
+                        <span style="color: var(--text-muted);">Settlement Batch ID :</span>
+                        <span style="font-family: monospace; color: var(--primary-light);">${st.id}</span>
+                    </div>
+                    <div style="display: flex; justify-content: space-between; font-size: 12px;">
+                        <span style="color: var(--text-muted);">Journal Entry ID :</span>
+                        <span style="font-family: monospace; color: var(--gold);">${journalId}</span>
+                    </div>
+                    <div style="display: flex; justify-content: space-between; font-size: 12px;">
+                        <span style="color: var(--text-muted);">Type Transaction Ledger :</span>
+                        <span style="font-weight: 700; color: #10B981;">merchant_settlement</span>
+                    </div>
+                    <div style="display: flex; justify-content: space-between; font-size: 12px;">
+                        <span style="color: var(--text-muted);">Statut :</span>
+                        <span style="font-weight: 800; color: #10B981; background: rgba(16,185,129,0.15); padding: 2px 6px; border-radius: 4px;">SUCCEEDED (Sandbox)</span>
+                    </div>
+                </div>
+
+                <button class="btn-action" style="width: 100%;" onclick="closePayModal()">Fermer le Reçu de Règlement</button>
             `);
         }
 

@@ -35,6 +35,14 @@ var (
 	ErrPaymentNotEligibleForRefund   = errors.New("payment intent is not eligible for refund: status must be SUCCEEDED")
 	ErrAlreadyFullyRefunded          = errors.New("payment intent is already fully refunded")
 	ErrInvalidRefundAmount           = errors.New("refund amount must be strictly greater than zero")
+	ErrSettlementNotFound            = errors.New("settlement not found")
+	ErrNoEligiblePayments            = errors.New("no eligible succeeded payments available for settlement")
+	ErrOverSettlement                = errors.New("settlement amount exceeds available net settleable amount")
+	ErrAlreadyFullySettled           = errors.New("payment intent is already fully settled")
+	ErrSettlementCurrencyMismatch    = errors.New("settlement currency mismatch")
+	ErrSettlementAlreadyProcessed    = errors.New("settlement has already been processed")
+	ErrInvalidSettlementAmount       = errors.New("settlement amount must be strictly greater than zero")
+	ErrSettlementNotPending          = errors.New("settlement must be in PENDING status to be processed")
 )
 
 type RefundStatus string
@@ -304,4 +312,79 @@ type BusinessAccountDetail struct {
 	PendingBalance   int64                 `json:"pending_balance"`
 	Currency         string                `json:"currency"`
 	IsSandbox        bool                  `json:"is_sandbox"`
+}
+
+// ════════════════════════════════════════════════
+// MERCHANT SETTLEMENT DOMAIN (PHASE 3A.4)
+// ════════════════════════════════════════════════
+
+type SettlementStatus string
+
+const (
+	SettlementPending    SettlementStatus = "PENDING"
+	SettlementProcessing SettlementStatus = "PROCESSING"
+	SettlementSucceeded  SettlementStatus = "SUCCEEDED"
+	SettlementFailed     SettlementStatus = "FAILED"
+	SettlementCancelled  SettlementStatus = "CANCELLED"
+)
+
+// Settlement represents an internal batch settlement for a merchant.
+// Note: Balance/amounts are derived and verified against the Ledger.
+type Settlement struct {
+	ID             uuid.UUID        `json:"id"`
+	BusinessID     uuid.UUID        `json:"business_id"`
+	TotalAmount    int64            `json:"total_amount"` // in minor units / FCFA
+	Currency       string           `json:"currency"`
+	Status         SettlementStatus `json:"status"`
+	IdempotencyKey string           `json:"idempotency_key,omitempty"`
+	JournalEntryID *uuid.UUID       `json:"journal_entry_id,omitempty"`
+	FailureReason  string           `json:"failure_reason,omitempty"`
+	CreatedAt      time.Time        `json:"created_at"`
+	ProcessedAt    *time.Time       `json:"processed_at,omitempty"`
+}
+
+// SettlementItem represents a single payment transaction included in a settlement batch.
+type SettlementItem struct {
+	ID              uuid.UUID `json:"id"`
+	SettlementID    uuid.UUID `json:"settlement_id"`
+	PaymentIntentID uuid.UUID `json:"payment_intent_id"`
+	GrossAmount     int64     `json:"gross_amount"`
+	RefundAmount    int64     `json:"refund_amount"`
+	NetAmount       int64     `json:"net_amount"`
+	Currency        string    `json:"currency"`
+	CreatedAt       time.Time `json:"created_at"`
+}
+
+// SettlementReceipt represents the audit-proof receipt issued after settlement creation or processing.
+type SettlementReceipt struct {
+	SettlementID   uuid.UUID         `json:"settlement_id"`
+	BusinessID     uuid.UUID         `json:"business_id"`
+	BusinessName   string            `json:"business_name"`
+	TotalAmount    int64             `json:"total_amount"`
+	Currency       string            `json:"currency"`
+	Status         SettlementStatus  `json:"status"`
+	IdempotencyKey string            `json:"idempotency_key,omitempty"`
+	JournalEntryID *uuid.UUID        `json:"journal_entry_id,omitempty"`
+	FailureReason  string            `json:"failure_reason,omitempty"`
+	Items          []*SettlementItem `json:"items"`
+	ItemCount      int               `json:"item_count"`
+	CreatedAt      time.Time         `json:"created_at"`
+	ProcessedAt    *time.Time        `json:"processed_at,omitempty"`
+	IsSandbox      bool              `json:"is_sandbox"`
+}
+
+type CreateSettlementRequest struct {
+	Amount         int64  `json:"amount,omitempty"` // Optional: If 0/omitted, settles all eligible funds
+	Currency       string `json:"currency,omitempty"`
+	IdempotencyKey string `json:"idempotency_key,omitempty"`
+}
+
+type EligibleSettlementCalculation struct {
+	BusinessID     uuid.UUID `json:"business_id"`
+	Currency       string    `json:"currency"`
+	GrossAmount    int64     `json:"gross_amount"`
+	TotalRefunded  int64     `json:"total_refunded"`
+	AlreadySettled int64     `json:"already_settled"`
+	NetSettleable  int64     `json:"net_settleable"`
+	EligibleCount  int       `json:"eligible_count"`
 }

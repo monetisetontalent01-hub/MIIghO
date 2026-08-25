@@ -48,39 +48,55 @@ type Repository interface {
 	GetRefundsByBusiness(ctx context.Context, businessID uuid.UUID) ([]*Refund, error)
 	UpdateRefundStatus(ctx context.Context, id uuid.UUID, status RefundStatus, completedAt *time.Time, journalEntryID *uuid.UUID) error
 	GetTotalRefundedAmount(ctx context.Context, paymentIntentID uuid.UUID) (int64, error)
+
+	// Settlements (Phase 3A.4)
+	ListSucceededPaymentIntents(ctx context.Context, businessID uuid.UUID) ([]*PaymentIntent, error)
+	CreateSettlement(ctx context.Context, settlement *Settlement, items []*SettlementItem) error
+	GetSettlement(ctx context.Context, id uuid.UUID) (*Settlement, error)
+	GetSettlementByIdempotencyKey(ctx context.Context, key string) (*Settlement, error)
+	ListSettlements(ctx context.Context, businessID uuid.UUID) ([]*Settlement, error)
+	GetSettlementItems(ctx context.Context, settlementID uuid.UUID) ([]*SettlementItem, error)
+	UpdateSettlementStatus(ctx context.Context, id uuid.UUID, status SettlementStatus, processedAt *time.Time, journalEntryID *uuid.UUID, failureReason string) error
+	GetTotalSettledAmount(ctx context.Context, paymentIntentID uuid.UUID) (int64, error)
 }
 
 // MemoryBusinessRepository is an in-memory repository for sandbox and unit testing with full ACID-like locking.
 type MemoryBusinessRepository struct {
-	mu             sync.RWMutex
-	ledgerRepo     ledger.Repository
-	businesses     map[uuid.UUID]*Business
-	members        map[uuid.UUID]*BusinessMember               // memberID -> member
-	bizMembers     map[uuid.UUID]map[uuid.UUID]*BusinessMember // bizID -> userID -> member
-	accounts       map[uuid.UUID]*BusinessAccount              // bizID -> account
-	ledgerMap      map[uuid.UUID]*BusinessAccount              // ledgerAccID -> account
-	qrCodesByID    map[uuid.UUID]*MerchantQR
-	qrCodesByCode  map[string]*MerchantQR
-	paymentIntents map[uuid.UUID]*PaymentIntent
-	intentsByIdemp map[string]*PaymentIntent
-	refunds        map[uuid.UUID]*Refund
-	refundsByIdemp map[string]*Refund
+	mu                 sync.RWMutex
+	ledgerRepo         ledger.Repository
+	businesses         map[uuid.UUID]*Business
+	members            map[uuid.UUID]*BusinessMember               // memberID -> member
+	bizMembers         map[uuid.UUID]map[uuid.UUID]*BusinessMember // bizID -> userID -> member
+	accounts           map[uuid.UUID]*BusinessAccount              // bizID -> account
+	ledgerMap          map[uuid.UUID]*BusinessAccount              // ledgerAccID -> account
+	qrCodesByID        map[uuid.UUID]*MerchantQR
+	qrCodesByCode      map[string]*MerchantQR
+	paymentIntents     map[uuid.UUID]*PaymentIntent
+	intentsByIdemp     map[string]*PaymentIntent
+	refunds            map[uuid.UUID]*Refund
+	refundsByIdemp     map[string]*Refund
+	settlements        map[uuid.UUID]*Settlement
+	settlementsByIdemp map[string]*Settlement
+	settlementItems    map[uuid.UUID][]*SettlementItem // settlementID -> items
 }
 
 func NewMemoryBusinessRepository(ledgerRepo ledger.Repository) *MemoryBusinessRepository {
 	return &MemoryBusinessRepository{
-		ledgerRepo:     ledgerRepo,
-		businesses:     make(map[uuid.UUID]*Business),
-		members:        make(map[uuid.UUID]*BusinessMember),
-		bizMembers:     make(map[uuid.UUID]map[uuid.UUID]*BusinessMember),
-		accounts:       make(map[uuid.UUID]*BusinessAccount),
-		ledgerMap:      make(map[uuid.UUID]*BusinessAccount),
-		qrCodesByID:    make(map[uuid.UUID]*MerchantQR),
-		qrCodesByCode:  make(map[string]*MerchantQR),
-		paymentIntents: make(map[uuid.UUID]*PaymentIntent),
-		intentsByIdemp: make(map[string]*PaymentIntent),
-		refunds:        make(map[uuid.UUID]*Refund),
-		refundsByIdemp: make(map[string]*Refund),
+		ledgerRepo:         ledgerRepo,
+		businesses:         make(map[uuid.UUID]*Business),
+		members:            make(map[uuid.UUID]*BusinessMember),
+		bizMembers:         make(map[uuid.UUID]map[uuid.UUID]*BusinessMember),
+		accounts:           make(map[uuid.UUID]*BusinessAccount),
+		ledgerMap:          make(map[uuid.UUID]*BusinessAccount),
+		qrCodesByID:        make(map[uuid.UUID]*MerchantQR),
+		qrCodesByCode:      make(map[string]*MerchantQR),
+		paymentIntents:     make(map[uuid.UUID]*PaymentIntent),
+		intentsByIdemp:     make(map[string]*PaymentIntent),
+		refunds:            make(map[uuid.UUID]*Refund),
+		refundsByIdemp:     make(map[string]*Refund),
+		settlements:        make(map[uuid.UUID]*Settlement),
+		settlementsByIdemp: make(map[string]*Settlement),
+		settlementItems:    make(map[uuid.UUID][]*SettlementItem),
 	}
 }
 
@@ -545,6 +561,151 @@ func (r *MemoryBusinessRepository) GetTotalRefundedAmount(ctx context.Context, p
 	for _, ref := range r.refunds {
 		if ref.PaymentIntentID == paymentIntentID && ref.Status == RefundSucceeded {
 			total += ref.Amount
+		}
+	}
+	return total, nil
+}
+
+// Settlements (Memory - Phase 3A.4)
+
+func (r *MemoryBusinessRepository) ListSucceededPaymentIntents(ctx context.Context, businessID uuid.UUID) ([]*PaymentIntent, error) {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+
+	var intents []*PaymentIntent
+	for _, intent := range r.paymentIntents {
+		if intent.BusinessID == businessID && intent.Status == IntentSucceeded {
+			intents = append(intents, intent)
+		}
+	}
+	return intents, nil
+}
+
+func (r *MemoryBusinessRepository) CreateSettlement(ctx context.Context, settlement *Settlement, items []*SettlementItem) error {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+
+	if settlement.IdempotencyKey != "" {
+		if existing, ok := r.settlementsByIdemp[settlement.IdempotencyKey]; ok {
+			if existing.TotalAmount != settlement.TotalAmount {
+				return ledger.ErrIdempotencyConflict
+			}
+			return ledger.ErrDuplicateIdempotency
+		}
+	}
+
+	if settlement.ID == uuid.Nil {
+		settlement.ID = uuid.New()
+	}
+	now := time.Now().UTC()
+	if settlement.CreatedAt.IsZero() {
+		settlement.CreatedAt = now
+	}
+
+	r.settlements[settlement.ID] = settlement
+	if settlement.IdempotencyKey != "" {
+		r.settlementsByIdemp[settlement.IdempotencyKey] = settlement
+	}
+
+	persistedItems := make([]*SettlementItem, 0, len(items))
+	for _, it := range items {
+		if it.ID == uuid.Nil {
+			it.ID = uuid.New()
+		}
+		it.SettlementID = settlement.ID
+		if it.CreatedAt.IsZero() {
+			it.CreatedAt = now
+		}
+		persistedItems = append(persistedItems, it)
+	}
+	r.settlementItems[settlement.ID] = persistedItems
+
+	return nil
+}
+
+func (r *MemoryBusinessRepository) GetSettlement(ctx context.Context, id uuid.UUID) (*Settlement, error) {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+
+	settlement, ok := r.settlements[id]
+	if !ok {
+		return nil, ErrSettlementNotFound
+	}
+	return settlement, nil
+}
+
+func (r *MemoryBusinessRepository) GetSettlementByIdempotencyKey(ctx context.Context, key string) (*Settlement, error) {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+
+	settlement, ok := r.settlementsByIdemp[key]
+	if !ok {
+		return nil, ErrSettlementNotFound
+	}
+	return settlement, nil
+}
+
+func (r *MemoryBusinessRepository) ListSettlements(ctx context.Context, businessID uuid.UUID) ([]*Settlement, error) {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+
+	var result []*Settlement
+	for _, s := range r.settlements {
+		if s.BusinessID == businessID {
+			result = append(result, s)
+		}
+	}
+	return result, nil
+}
+
+func (r *MemoryBusinessRepository) GetSettlementItems(ctx context.Context, settlementID uuid.UUID) ([]*SettlementItem, error) {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+
+	items, ok := r.settlementItems[settlementID]
+	if !ok {
+		return []*SettlementItem{}, nil
+	}
+	return items, nil
+}
+
+func (r *MemoryBusinessRepository) UpdateSettlementStatus(ctx context.Context, id uuid.UUID, status SettlementStatus, processedAt *time.Time, journalEntryID *uuid.UUID, failureReason string) error {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+
+	settlement, ok := r.settlements[id]
+	if !ok {
+		return ErrSettlementNotFound
+	}
+	settlement.Status = status
+	if processedAt != nil {
+		settlement.ProcessedAt = processedAt
+	}
+	if journalEntryID != nil {
+		settlement.JournalEntryID = journalEntryID
+	}
+	if failureReason != "" {
+		settlement.FailureReason = failureReason
+	}
+	return nil
+}
+
+func (r *MemoryBusinessRepository) GetTotalSettledAmount(ctx context.Context, paymentIntentID uuid.UUID) (int64, error) {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+
+	var total int64
+	for settlementID, items := range r.settlementItems {
+		settlement, ok := r.settlements[settlementID]
+		if !ok || (settlement.Status != SettlementSucceeded && settlement.Status != SettlementProcessing && settlement.Status != SettlementPending) {
+			// Note: If a settlement is active (PENDING, PROCESSING, SUCCEEDED), we count its net amount
+			// to protect against double settlement during in-flight batches.
+			continue
+		}
+		for _, it := range items {
+			if it.PaymentIntentID == paymentIntentID {
+				total += it.NetAmount
+			}
 		}
 	}
 	return total, nil
@@ -1222,6 +1383,222 @@ func (r *PostgresBusinessRepository) GetTotalRefundedAmount(ctx context.Context,
 		SELECT COALESCE(SUM(amount), 0)
 		FROM refunds
 		WHERE payment_intent_id = $1 AND status = 'SUCCEEDED'
+	`
+	var total int64
+	err := r.pool.QueryRow(ctx, query, paymentIntentID).Scan(&total)
+	return total, err
+}
+
+// Settlements (Postgres - Phase 3A.4)
+
+func (r *PostgresBusinessRepository) ListSucceededPaymentIntents(ctx context.Context, businessID uuid.UUID) ([]*PaymentIntent, error) {
+	query := `
+		SELECT id, business_id, payer_user_id, merchant_qr_id, amount, currency, status,
+		       idempotency_key, created_at, expires_at, confirmed_at, journal_entry_id
+		FROM payment_intents
+		WHERE business_id = $1 AND status = 'SUCCEEDED'
+		ORDER BY created_at ASC
+	`
+	rows, err := r.pool.Query(ctx, query, businessID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var intents []*PaymentIntent
+	for rows.Next() {
+		var intent PaymentIntent
+		var status string
+		if err := rows.Scan(
+			&intent.ID, &intent.BusinessID, &intent.PayerUserID, &intent.MerchantQRID,
+			&intent.Amount, &intent.Currency, &status, &intent.IdempotencyKey,
+			&intent.CreatedAt, &intent.ExpiresAt, &intent.ConfirmedAt, &intent.JournalEntryID,
+		); err != nil {
+			return nil, err
+		}
+		intent.Status = PaymentIntentStatus(status)
+		intents = append(intents, &intent)
+	}
+	return intents, nil
+}
+
+func (r *PostgresBusinessRepository) CreateSettlement(ctx context.Context, settlement *Settlement, items []*SettlementItem) error {
+	tx, err := r.pool.Begin(ctx)
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback(ctx)
+
+	if settlement.ID == uuid.Nil {
+		settlement.ID = uuid.New()
+	}
+	now := time.Now().UTC()
+	if settlement.CreatedAt.IsZero() {
+		settlement.CreatedAt = now
+	}
+
+	settlementQuery := `
+		INSERT INTO settlements (id, business_id, total_amount, currency, status, idempotency_key, journal_entry_id, failure_reason, created_at, processed_at)
+		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
+	`
+	_, err = tx.Exec(ctx, settlementQuery,
+		settlement.ID, settlement.BusinessID, settlement.TotalAmount, settlement.Currency,
+		string(settlement.Status), settlement.IdempotencyKey, settlement.JournalEntryID,
+		settlement.FailureReason, settlement.CreatedAt, settlement.ProcessedAt,
+	)
+	if err != nil {
+		return err
+	}
+
+	itemQuery := `
+		INSERT INTO settlement_items (id, settlement_id, payment_intent_id, gross_amount, refund_amount, net_amount, currency, created_at)
+		VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+	`
+	for _, it := range items {
+		if it.ID == uuid.Nil {
+			it.ID = uuid.New()
+		}
+		it.SettlementID = settlement.ID
+		if it.CreatedAt.IsZero() {
+			it.CreatedAt = now
+		}
+		_, err = tx.Exec(ctx, itemQuery,
+			it.ID, it.SettlementID, it.PaymentIntentID,
+			it.GrossAmount, it.RefundAmount, it.NetAmount,
+			it.Currency, it.CreatedAt,
+		)
+		if err != nil {
+			return err
+		}
+	}
+
+	return tx.Commit(ctx)
+}
+
+func (r *PostgresBusinessRepository) GetSettlement(ctx context.Context, id uuid.UUID) (*Settlement, error) {
+	query := `
+		SELECT id, business_id, total_amount, currency, status, idempotency_key, journal_entry_id, failure_reason, created_at, processed_at
+		FROM settlements
+		WHERE id = $1
+	`
+	var s Settlement
+	var status string
+	err := r.pool.QueryRow(ctx, query, id).Scan(
+		&s.ID, &s.BusinessID, &s.TotalAmount, &s.Currency, &status,
+		&s.IdempotencyKey, &s.JournalEntryID, &s.FailureReason,
+		&s.CreatedAt, &s.ProcessedAt,
+	)
+	if err != nil {
+		return nil, ErrSettlementNotFound
+	}
+	s.Status = SettlementStatus(status)
+	return &s, nil
+}
+
+func (r *PostgresBusinessRepository) GetSettlementByIdempotencyKey(ctx context.Context, key string) (*Settlement, error) {
+	if key == "" {
+		return nil, ErrSettlementNotFound
+	}
+	query := `
+		SELECT id, business_id, total_amount, currency, status, idempotency_key, journal_entry_id, failure_reason, created_at, processed_at
+		FROM settlements
+		WHERE idempotency_key = $1
+		LIMIT 1
+	`
+	var s Settlement
+	var status string
+	err := r.pool.QueryRow(ctx, query, key).Scan(
+		&s.ID, &s.BusinessID, &s.TotalAmount, &s.Currency, &status,
+		&s.IdempotencyKey, &s.JournalEntryID, &s.FailureReason,
+		&s.CreatedAt, &s.ProcessedAt,
+	)
+	if err != nil {
+		return nil, ErrSettlementNotFound
+	}
+	s.Status = SettlementStatus(status)
+	return &s, nil
+}
+
+func (r *PostgresBusinessRepository) ListSettlements(ctx context.Context, businessID uuid.UUID) ([]*Settlement, error) {
+	query := `
+		SELECT id, business_id, total_amount, currency, status, idempotency_key, journal_entry_id, failure_reason, created_at, processed_at
+		FROM settlements
+		WHERE business_id = $1
+		ORDER BY created_at DESC
+	`
+	rows, err := r.pool.Query(ctx, query, businessID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var result []*Settlement
+	for rows.Next() {
+		var s Settlement
+		var status string
+		if err := rows.Scan(
+			&s.ID, &s.BusinessID, &s.TotalAmount, &s.Currency, &status,
+			&s.IdempotencyKey, &s.JournalEntryID, &s.FailureReason,
+			&s.CreatedAt, &s.ProcessedAt,
+		); err != nil {
+			return nil, err
+		}
+		s.Status = SettlementStatus(status)
+		result = append(result, &s)
+	}
+	return result, nil
+}
+
+func (r *PostgresBusinessRepository) GetSettlementItems(ctx context.Context, settlementID uuid.UUID) ([]*SettlementItem, error) {
+	query := `
+		SELECT id, settlement_id, payment_intent_id, gross_amount, refund_amount, net_amount, currency, created_at
+		FROM settlement_items
+		WHERE settlement_id = $1
+		ORDER BY created_at ASC
+	`
+	rows, err := r.pool.Query(ctx, query, settlementID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var items []*SettlementItem
+	for rows.Next() {
+		var it SettlementItem
+		if err := rows.Scan(
+			&it.ID, &it.SettlementID, &it.PaymentIntentID,
+			&it.GrossAmount, &it.RefundAmount, &it.NetAmount,
+			&it.Currency, &it.CreatedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, &it)
+	}
+	return items, nil
+}
+
+func (r *PostgresBusinessRepository) UpdateSettlementStatus(ctx context.Context, id uuid.UUID, status SettlementStatus, processedAt *time.Time, journalEntryID *uuid.UUID, failureReason string) error {
+	query := `
+		UPDATE settlements
+		SET status = $1, processed_at = $2, journal_entry_id = $3, failure_reason = $4
+		WHERE id = $5
+	`
+	tag, err := r.pool.Exec(ctx, query, string(status), processedAt, journalEntryID, failureReason, id)
+	if err != nil {
+		return err
+	}
+	if tag.RowsAffected() == 0 {
+		return ErrSettlementNotFound
+	}
+	return nil
+}
+
+func (r *PostgresBusinessRepository) GetTotalSettledAmount(ctx context.Context, paymentIntentID uuid.UUID) (int64, error) {
+	query := `
+		SELECT COALESCE(SUM(si.net_amount), 0)
+		FROM settlement_items si
+		JOIN settlements s ON s.id = si.settlement_id
+		WHERE si.payment_intent_id = $1 AND s.status IN ('PENDING', 'PROCESSING', 'SUCCEEDED')
 	`
 	var total int64
 	err := r.pool.QueryRow(ctx, query, paymentIntentID).Scan(&total)

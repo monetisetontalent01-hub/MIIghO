@@ -484,4 +484,146 @@ class RefundReceiptModel {
   }
 }
 
+/// Modèle d'un Règlement Marchand (Settlement - Phase 3A.4)
+class SettlementModel {
+  final String id;
+  final String businessId;
+  final int totalAmount;
+  final String currency;
+  final String status; // PENDING, PROCESSING, SUCCEEDED, FAILED, CANCELLED
+  final String? idempotencyKey;
+  final String? journalEntryId;
+  final String? failureReason;
+  final DateTime createdAt;
+  final DateTime? processedAt;
+
+  SettlementModel({
+    required this.id,
+    required this.businessId,
+    required this.totalAmount,
+    required this.currency,
+    required this.status,
+    this.idempotencyKey,
+    this.journalEntryId,
+    this.failureReason,
+    required this.createdAt,
+    this.processedAt,
+  });
+
+  factory SettlementModel.fromJson(Map<String, dynamic> json) {
+    return SettlementModel(
+      id: json['id'] ?? '',
+      businessId: json['business_id'] ?? '',
+      totalAmount: (json['total_amount'] as num?)?.toInt() ?? 0,
+      currency: json['currency'] ?? 'FCFA',
+      status: json['status'] ?? 'PENDING',
+      idempotencyKey: json['idempotency_key'],
+      journalEntryId: json['journal_entry_id'],
+      failureReason: json['failure_reason'],
+      createdAt: json['created_at'] != null ? DateTime.parse(json['created_at']) : DateTime.now(),
+      processedAt: json['processed_at'] != null ? DateTime.parse(json['processed_at']) : null,
+    );
+  }
+
+  bool get isSucceeded => status == 'SUCCEEDED';
+  bool get isPending => status == 'PENDING';
+  bool get isProcessing => status == 'PROCESSING';
+}
+
+/// Modèle d'un élément composant un lot de Settlement
+class SettlementItemModel {
+  final String id;
+  final String settlementId;
+  final String paymentIntentId;
+  final int grossAmount;
+  final int refundAmount;
+  final int netAmount;
+  final String currency;
+  final DateTime createdAt;
+
+  SettlementItemModel({
+    required this.id,
+    required this.settlementId,
+    required this.paymentIntentId,
+    required this.grossAmount,
+    required this.refundAmount,
+    required this.netAmount,
+    required this.currency,
+    required this.createdAt,
+  });
+
+  factory SettlementItemModel.fromJson(Map<String, dynamic> json) {
+    return SettlementItemModel(
+      id: json['id'] ?? '',
+      settlementId: json['settlement_id'] ?? '',
+      paymentIntentId: json['payment_intent_id'] ?? '',
+      grossAmount: (json['gross_amount'] as num?)?.toInt() ?? 0,
+      refundAmount: (json['refund_amount'] as num?)?.toInt() ?? 0,
+      netAmount: (json['net_amount'] as num?)?.toInt() ?? 0,
+      currency: json['currency'] ?? 'FCFA',
+      createdAt: json['created_at'] != null ? DateTime.parse(json['created_at']) : DateTime.now(),
+    );
+  }
+}
+
+/// Modèle du reçu de Règlement Marchand émis
+class SettlementReceiptModel {
+  final String settlementId;
+  final String businessId;
+  final String businessName;
+  final int totalAmount;
+  final String currency;
+  final String status;
+  final String? idempotencyKey;
+  final String? journalEntryId;
+  final String? failureReason;
+  final List<SettlementItemModel> items;
+  final int itemCount;
+  final DateTime createdAt;
+  final DateTime? processedAt;
+  final bool isSandbox;
+
+  SettlementReceiptModel({
+    required this.settlementId,
+    required this.businessId,
+    required this.businessName,
+    required this.totalAmount,
+    required this.currency,
+    required this.status,
+    this.idempotencyKey,
+    this.journalEntryId,
+    this.failureReason,
+    required this.items,
+    required this.itemCount,
+    required this.createdAt,
+    this.processedAt,
+    this.isSandbox = true,
+  });
+
+  factory SettlementReceiptModel.fromJson(Map<String, dynamic> json) {
+    var rawItems = json['items'] as List<dynamic>? ?? [];
+    List<SettlementItemModel> parsedItems = rawItems
+        .map((i) => SettlementItemModel.fromJson(i as Map<String, dynamic>))
+        .toList();
+
+    return SettlementReceiptModel(
+      settlementId: json['settlement_id'] ?? '',
+      businessId: json['business_id'] ?? '',
+      businessName: json['business_name'] ?? '',
+      totalAmount: (json['total_amount'] as num?)?.toInt() ?? 0,
+      currency: json['currency'] ?? 'FCFA',
+      status: json['status'] ?? 'PENDING',
+      idempotencyKey: json['idempotency_key'],
+      journalEntryId: json['journal_entry_id'],
+      failureReason: json['failure_reason'],
+      items: parsedItems,
+      itemCount: (json['item_count'] as num?)?.toInt() ?? parsedItems.length,
+      createdAt: json['created_at'] != null ? DateTime.parse(json['created_at']) : DateTime.now(),
+      processedAt: json['processed_at'] != null ? DateTime.parse(json['processed_at']) : null,
+      isSandbox: json['is_sandbox'] ?? true,
+    );
+  }
+}
+
+
 

@@ -11,17 +11,40 @@ import (
 	"github.com/miigho/miigho/internal/ledger"
 )
 
+// SettlementProvider defines the interface for executing merchant settlement disbursements.
+type SettlementProvider interface {
+	ProcessSettlement(ctx context.Context, settlement *Settlement) error
+}
+
+// SandboxSettlementProvider simulates immediate 100% sandbox processing with 0 real PSP calls.
+type SandboxSettlementProvider struct{}
+
+func NewSandboxSettlementProvider() *SandboxSettlementProvider {
+	return &SandboxSettlementProvider{}
+}
+
+func (p *SandboxSettlementProvider) ProcessSettlement(ctx context.Context, settlement *Settlement) error {
+	// 100% Sandbox simulation - 0 external calls
+	return nil
+}
+
 // Service coordinates business logic, authorization rules, and double-entry ledger linkage.
 type Service struct {
-	repo       Repository
-	ledgerRepo ledger.Repository
+	repo               Repository
+	ledgerRepo         ledger.Repository
+	settlementProvider SettlementProvider
 }
 
 func NewService(repo Repository, ledgerRepo ledger.Repository) *Service {
 	return &Service{
-		repo:       repo,
-		ledgerRepo: ledgerRepo,
+		repo:               repo,
+		ledgerRepo:         ledgerRepo,
+		settlementProvider: NewSandboxSettlementProvider(),
 	}
+}
+
+func (s *Service) SetSettlementProvider(p SettlementProvider) {
+	s.settlementProvider = p
 }
 
 // ════════════════════════════════════════════════
@@ -1121,4 +1144,513 @@ func (s *Service) GetRefunds(ctx context.Context, requestUserID, paymentIntentID
 	}
 
 	return s.repo.GetRefundsByPaymentIntent(ctx, paymentIntentID)
+}
+
+// ════════════════════════════════════════════════
+// MERCHANT SETTLEMENT METHODS (PHASE 3A.4)
+// ════════════════════════════════════════════════
+
+// CalculateEligibleSettlement derives the total settleable balance across all succeeded payment intents.
+// Formula: net_settleable = SUM(gross_payment - successful_refunds - already_settled).
+func (s *Service) CalculateEligibleSettlement(ctx context.Context, requesterUserID, businessID uuid.UUID) (*EligibleSettlementCalculation, error) {
+	biz, err := s.repo.GetBusiness(ctx, businessID)
+	if err != nil {
+		return nil, err
+	}
+
+	member, err := s.repo.GetMember(ctx, businessID, requesterUserID)
+	if err != nil {
+		return nil, ErrUnauthorizedAccess
+	}
+
+	if !CanViewAccount(member.Role, biz.Status) {
+		return nil, ErrInsufficientPermission
+	}
+
+	intents, err := s.repo.ListSucceededPaymentIntents(ctx, businessID)
+	if err != nil {
+		return nil, err
+	}
+
+	var grossTotal int64
+	var refundedTotal int64
+	var settledTotal int64
+	var netSettleableTotal int64
+	var eligibleCount int
+
+	for _, intent := range intents {
+		if intent.Currency != biz.Currency {
+			continue
+		}
+
+		refAmt, _ := s.repo.GetTotalRefundedAmount(ctx, intent.ID)
+		setAmt, _ := s.repo.GetTotalSettledAmount(ctx, intent.ID)
+
+		net := intent.Amount - refAmt - setAmt
+		if net > 0 {
+			grossTotal += intent.Amount
+			refundedTotal += refAmt
+			settledTotal += setAmt
+			netSettleableTotal += net
+			eligibleCount++
+		}
+	}
+
+	return &EligibleSettlementCalculation{
+		BusinessID:     businessID,
+		Currency:       biz.Currency,
+		GrossAmount:    grossTotal,
+		TotalRefunded:  refundedTotal,
+		AlreadySettled: settledTotal,
+		NetSettleable:  netSettleableTotal,
+		EligibleCount:  eligibleCount,
+	}, nil
+}
+
+// CreateSettlement builds a batch settlement for eligible payments and puts it in PENDING status.
+func (s *Service) CreateSettlement(ctx context.Context, requesterUserID, businessID uuid.UUID, req *CreateSettlementRequest) (*SettlementReceipt, error) {
+	// 1. Fetch Business & verify status
+	biz, err := s.repo.GetBusiness(ctx, businessID)
+	if err != nil {
+		return nil, err
+	}
+
+	if biz.Status == StatusClosed {
+		return nil, ErrBusinessClosed
+	}
+	if biz.Status == StatusSuspended {
+		return nil, ErrBusinessSuspended
+	}
+
+	// 2. Authorization & IDOR: OWNER and ADMIN only
+	member, err := s.repo.GetMember(ctx, businessID, requesterUserID)
+	if err != nil {
+		return nil, ErrUnauthorizedAccess
+	}
+
+	if member.Role != RoleOwner && member.Role != RoleAdmin {
+		return nil, ErrInsufficientPermission
+	}
+
+	// 3. Currency Validation
+	if req.Currency != "" && req.Currency != biz.Currency {
+		return nil, ErrSettlementCurrencyMismatch
+	}
+
+	// 4. Idempotency Check
+	if req.IdempotencyKey != "" {
+		if existing, err := s.repo.GetSettlementByIdempotencyKey(ctx, req.IdempotencyKey); err == nil {
+			if req.Amount > 0 && existing.TotalAmount != req.Amount {
+				return nil, fmt.Errorf("%w: existing amount=%d, requested amount=%d", ledger.ErrIdempotencyConflict, existing.TotalAmount, req.Amount)
+			}
+			items, _ := s.repo.GetSettlementItems(ctx, existing.ID)
+			return &SettlementReceipt{
+				SettlementID:   existing.ID,
+				BusinessID:     biz.ID,
+				BusinessName:   biz.DisplayName,
+				TotalAmount:    existing.TotalAmount,
+				Currency:       existing.Currency,
+				Status:         existing.Status,
+				IdempotencyKey: existing.IdempotencyKey,
+				JournalEntryID: existing.JournalEntryID,
+				FailureReason:  existing.FailureReason,
+				Items:          items,
+				ItemCount:      len(items),
+				CreatedAt:      existing.CreatedAt,
+				ProcessedAt:    existing.ProcessedAt,
+				IsSandbox:      true,
+			}, nil
+		}
+	}
+
+	if req.Amount < 0 {
+		return nil, ErrInvalidSettlementAmount
+	}
+
+	// 5. Fetch Succeeded Payments & Calculate Eligible Net Settleable
+	intents, err := s.repo.ListSucceededPaymentIntents(ctx, businessID)
+	if err != nil {
+		return nil, err
+	}
+
+	type eligibleIntent struct {
+		intent   *PaymentIntent
+		gross    int64
+		refunded int64
+		settled  int64
+		net      int64
+	}
+
+	var eligibleList []eligibleIntent
+	var totalAvailableNet int64
+
+	for _, intent := range intents {
+		if intent.Currency != biz.Currency {
+			continue
+		}
+		refAmt, _ := s.repo.GetTotalRefundedAmount(ctx, intent.ID)
+		setAmt, _ := s.repo.GetTotalSettledAmount(ctx, intent.ID)
+		net := intent.Amount - refAmt - setAmt
+		if net > 0 {
+			eligibleList = append(eligibleList, eligibleIntent{
+				intent:   intent,
+				gross:    intent.Amount,
+				refunded: refAmt,
+				settled:  setAmt,
+				net:      net,
+			})
+			totalAvailableNet += net
+		}
+	}
+
+	if len(eligibleList) == 0 || totalAvailableNet <= 0 {
+		return nil, ErrNoEligiblePayments
+	}
+
+	// 6. Determine target settlement amount
+	targetAmount := totalAvailableNet
+	if req.Amount > 0 {
+		if req.Amount > totalAvailableNet {
+			return nil, fmt.Errorf("%w: requested %d, available %d", ErrOverSettlement, req.Amount, totalAvailableNet)
+		}
+		targetAmount = req.Amount
+	}
+
+	if targetAmount <= 0 {
+		return nil, ErrInvalidSettlementAmount
+	}
+
+	// 7. Construct Settlement Batch Items
+	now := time.Now().UTC()
+	settlementID := uuid.New()
+	remainingToAllocate := targetAmount
+	var settlementItems []*SettlementItem
+
+	for _, el := range eligibleList {
+		if remainingToAllocate <= 0 {
+			break
+		}
+
+		take := el.net
+		if take > remainingToAllocate {
+			take = remainingToAllocate
+		}
+
+		item := &SettlementItem{
+			ID:              uuid.New(),
+			SettlementID:    settlementID,
+			PaymentIntentID: el.intent.ID,
+			GrossAmount:     el.gross,
+			RefundAmount:    el.refunded,
+			NetAmount:       take,
+			Currency:        biz.Currency,
+			CreatedAt:       now,
+		}
+
+		settlementItems = append(settlementItems, item)
+		remainingToAllocate -= take
+	}
+
+	// 8. Create Settlement entity (PENDING)
+	settlement := &Settlement{
+		ID:             settlementID,
+		BusinessID:     biz.ID,
+		TotalAmount:    targetAmount,
+		Currency:       biz.Currency,
+		Status:         SettlementPending,
+		IdempotencyKey: req.IdempotencyKey,
+		CreatedAt:      now,
+	}
+
+	if err := s.repo.CreateSettlement(ctx, settlement, settlementItems); err != nil {
+		if errors.Is(err, ledger.ErrDuplicateIdempotency) {
+			if existing, fetchErr := s.repo.GetSettlementByIdempotencyKey(ctx, req.IdempotencyKey); fetchErr == nil {
+				items, _ := s.repo.GetSettlementItems(ctx, existing.ID)
+				return &SettlementReceipt{
+					SettlementID:   existing.ID,
+					BusinessID:     biz.ID,
+					BusinessName:   biz.DisplayName,
+					TotalAmount:    existing.TotalAmount,
+					Currency:       existing.Currency,
+					Status:         existing.Status,
+					IdempotencyKey: existing.IdempotencyKey,
+					JournalEntryID: existing.JournalEntryID,
+					FailureReason:  existing.FailureReason,
+					Items:          items,
+					ItemCount:      len(items),
+					CreatedAt:      existing.CreatedAt,
+					ProcessedAt:    existing.ProcessedAt,
+					IsSandbox:      true,
+				}, nil
+			}
+		}
+		return nil, err
+	}
+
+	return &SettlementReceipt{
+		SettlementID:   settlement.ID,
+		BusinessID:     biz.ID,
+		BusinessName:   biz.DisplayName,
+		TotalAmount:    settlement.TotalAmount,
+		Currency:       settlement.Currency,
+		Status:         SettlementPending,
+		IdempotencyKey: settlement.IdempotencyKey,
+		Items:          settlementItems,
+		ItemCount:      len(settlementItems),
+		CreatedAt:      now,
+		IsSandbox:      true,
+	}, nil
+}
+
+// ProcessSettlement executes the disbursement workflow for a PENDING settlement in Sandbox mode.
+// Double-entry accounting: Business Asset Account CRÉDIT, System Settlement Pool DÉBIT.
+func (s *Service) ProcessSettlement(ctx context.Context, requesterUserID, businessID, settlementID uuid.UUID) (*SettlementReceipt, error) {
+	// 1. Fetch Business & check status
+	biz, err := s.repo.GetBusiness(ctx, businessID)
+	if err != nil {
+		return nil, err
+	}
+
+	if biz.Status == StatusClosed {
+		return nil, ErrBusinessClosed
+	}
+	if biz.Status == StatusSuspended {
+		return nil, ErrBusinessSuspended
+	}
+
+	// 2. Authorization & IDOR: OWNER and ADMIN only
+	member, err := s.repo.GetMember(ctx, businessID, requesterUserID)
+	if err != nil {
+		return nil, ErrUnauthorizedAccess
+	}
+
+	if member.Role != RoleOwner && member.Role != RoleAdmin {
+		return nil, ErrInsufficientPermission
+	}
+
+	// 3. Fetch Settlement
+	settlement, err := s.repo.GetSettlement(ctx, settlementID)
+	if err != nil {
+		return nil, err
+	}
+
+	if settlement.BusinessID != businessID {
+		return nil, ErrUnauthorizedAccess
+	}
+
+	if settlement.Status == SettlementSucceeded {
+		// Idempotent success response
+		items, _ := s.repo.GetSettlementItems(ctx, settlement.ID)
+		return &SettlementReceipt{
+			SettlementID:   settlement.ID,
+			BusinessID:     biz.ID,
+			BusinessName:   biz.DisplayName,
+			TotalAmount:    settlement.TotalAmount,
+			Currency:       settlement.Currency,
+			Status:         SettlementSucceeded,
+			IdempotencyKey: settlement.IdempotencyKey,
+			JournalEntryID: settlement.JournalEntryID,
+			FailureReason:  settlement.FailureReason,
+			Items:          items,
+			ItemCount:      len(items),
+			CreatedAt:      settlement.CreatedAt,
+			ProcessedAt:    settlement.ProcessedAt,
+			IsSandbox:      true,
+		}, nil
+	}
+
+	if settlement.Status != SettlementPending {
+		return nil, ErrSettlementNotPending
+	}
+
+	// 4. Fetch Business Financial Account & Verify Funds on Ledger
+	bizAcc, err := s.repo.GetBusinessAccount(ctx, biz.ID)
+	if err != nil {
+		return nil, ErrBusinessAccountNotFound
+	}
+
+	bizBalance, err := s.ledgerRepo.GetBalance(ctx, bizAcc.LedgerAccountID)
+	if err != nil {
+		return nil, err
+	}
+
+	if bizBalance < settlement.TotalAmount {
+		failureReason := fmt.Sprintf("insufficient funds on business account: available %d, required %d", bizBalance, settlement.TotalAmount)
+		_ = s.repo.UpdateSettlementStatus(ctx, settlement.ID, SettlementFailed, nil, nil, failureReason)
+		return nil, fmt.Errorf("%w: %s", ErrPaymentFailed, failureReason)
+	}
+
+	// 5. Transition to PROCESSING
+	_ = s.repo.UpdateSettlementStatus(ctx, settlement.ID, SettlementProcessing, nil, nil, "")
+
+	// 6. Execute Provider Disbursement (100% Sandbox Provider - 0 external calls)
+	if err := s.settlementProvider.ProcessSettlement(ctx, settlement); err != nil {
+		_ = s.repo.UpdateSettlementStatus(ctx, settlement.ID, SettlementFailed, nil, nil, err.Error())
+		return nil, fmt.Errorf("settlement provider error: %w", err)
+	}
+
+	// 7. Execute Double-Entry Ledger Posting
+	// Business Asset Account: CRÉDIT (balance decreases)
+	// MoMo Settlement Pool (Liability): DÉBIT (settlement liability cleared)
+	// Invariant: SUM(DR) == SUM(CR) == settlement.TotalAmount
+	settlementPool, err := s.ledgerRepo.GetSystemAccount(ctx, "MoMo Settlement Pool", settlement.Currency, ledger.Liability)
+	if err != nil {
+		_ = s.repo.UpdateSettlementStatus(ctx, settlement.ID, SettlementFailed, nil, nil, err.Error())
+		return nil, err
+	}
+
+	now := time.Now().UTC()
+	entryID := uuid.New()
+	ledgerRef := fmt.Sprintf("SETTLEMENT-%s", settlement.ID.String())
+	ledgerIdempotencyKey := fmt.Sprintf("CONFIRM-SETTLEMENT-%s", settlement.ID.String())
+
+	entry := &ledger.JournalEntry{
+		ID:              entryID,
+		TransactionType: ledger.MerchantSettlement,
+		ReferenceID:     ledgerRef,
+		Description:     fmt.Sprintf("Règlement Marchand (Settlement) • %s", biz.DisplayName),
+		CreatedAt:       now,
+	}
+
+	postings := []*ledger.LedgerPosting{
+		{
+			ID:             uuid.New(),
+			JournalEntryID: entryID,
+			AccountID:      bizAcc.LedgerAccountID,
+			Amount:         settlement.TotalAmount,
+			IsCredit:       true, // Credit business asset (decreases balance)
+			CreatedAt:      now,
+		},
+		{
+			ID:             uuid.New(),
+			JournalEntryID: entryID,
+			AccountID:      settlementPool.ID,
+			Amount:         settlement.TotalAmount,
+			IsCredit:       false, // Debit system settlement pool liability
+			CreatedAt:      now,
+		},
+	}
+
+	if err := s.ledgerRepo.PostJournalEntry(ctx, entry, postings, ledgerIdempotencyKey); err != nil {
+		if !errors.Is(err, ledger.ErrDuplicateIdempotency) {
+			_ = s.repo.UpdateSettlementStatus(ctx, settlement.ID, SettlementFailed, nil, nil, err.Error())
+			return nil, fmt.Errorf("%w: failed to post ledger entry: %v", ErrPaymentFailed, err)
+		}
+	}
+
+	// 8. Update Settlement to SUCCEEDED
+	if err := s.repo.UpdateSettlementStatus(ctx, settlement.ID, SettlementSucceeded, &now, &entryID, ""); err != nil {
+		return nil, err
+	}
+
+	items, _ := s.repo.GetSettlementItems(ctx, settlement.ID)
+
+	return &SettlementReceipt{
+		SettlementID:   settlement.ID,
+		BusinessID:     biz.ID,
+		BusinessName:   biz.DisplayName,
+		TotalAmount:    settlement.TotalAmount,
+		Currency:       settlement.Currency,
+		Status:         SettlementSucceeded,
+		IdempotencyKey: settlement.IdempotencyKey,
+		JournalEntryID: &entryID,
+		Items:          items,
+		ItemCount:      len(items),
+		CreatedAt:      settlement.CreatedAt,
+		ProcessedAt:    &now,
+		IsSandbox:      true,
+	}, nil
+}
+
+// GetSettlement retrieves a single settlement detail and its constituent items with IDOR protection.
+func (s *Service) GetSettlement(ctx context.Context, requesterUserID, businessID, settlementID uuid.UUID) (*SettlementReceipt, error) {
+	biz, err := s.repo.GetBusiness(ctx, businessID)
+	if err != nil {
+		return nil, err
+	}
+
+	member, err := s.repo.GetMember(ctx, businessID, requesterUserID)
+	if err != nil {
+		return nil, ErrUnauthorizedAccess
+	}
+
+	if !CanViewAccount(member.Role, biz.Status) {
+		return nil, ErrInsufficientPermission
+	}
+
+	settlement, err := s.repo.GetSettlement(ctx, settlementID)
+	if err != nil {
+		return nil, err
+	}
+
+	if settlement.BusinessID != businessID {
+		return nil, ErrUnauthorizedAccess
+	}
+
+	items, err := s.repo.GetSettlementItems(ctx, settlement.ID)
+	if err != nil {
+		return nil, err
+	}
+
+	return &SettlementReceipt{
+		SettlementID:   settlement.ID,
+		BusinessID:     biz.ID,
+		BusinessName:   biz.DisplayName,
+		TotalAmount:    settlement.TotalAmount,
+		Currency:       settlement.Currency,
+		Status:         settlement.Status,
+		IdempotencyKey: settlement.IdempotencyKey,
+		JournalEntryID: settlement.JournalEntryID,
+		FailureReason:  settlement.FailureReason,
+		Items:          items,
+		ItemCount:      len(items),
+		CreatedAt:      settlement.CreatedAt,
+		ProcessedAt:    settlement.ProcessedAt,
+		IsSandbox:      true,
+	}, nil
+}
+
+// ListSettlements returns all settlements of a business with IDOR protection.
+func (s *Service) ListSettlements(ctx context.Context, requesterUserID, businessID uuid.UUID) ([]*SettlementReceipt, error) {
+	biz, err := s.repo.GetBusiness(ctx, businessID)
+	if err != nil {
+		return nil, err
+	}
+
+	member, err := s.repo.GetMember(ctx, businessID, requesterUserID)
+	if err != nil {
+		return nil, ErrUnauthorizedAccess
+	}
+
+	if !CanViewAccount(member.Role, biz.Status) {
+		return nil, ErrInsufficientPermission
+	}
+
+	settlements, err := s.repo.ListSettlements(ctx, businessID)
+	if err != nil {
+		return nil, err
+	}
+
+	var receipts []*SettlementReceipt
+	for _, st := range settlements {
+		items, _ := s.repo.GetSettlementItems(ctx, st.ID)
+		receipts = append(receipts, &SettlementReceipt{
+			SettlementID:   st.ID,
+			BusinessID:     biz.ID,
+			BusinessName:   biz.DisplayName,
+			TotalAmount:    st.TotalAmount,
+			Currency:       st.Currency,
+			Status:         st.Status,
+			IdempotencyKey: st.IdempotencyKey,
+			JournalEntryID: st.JournalEntryID,
+			FailureReason:  st.FailureReason,
+			Items:          items,
+			ItemCount:      len(items),
+			CreatedAt:      st.CreatedAt,
+			ProcessedAt:    st.ProcessedAt,
+			IsSandbox:      true,
+		})
+	}
+
+	return receipts, nil
 }
