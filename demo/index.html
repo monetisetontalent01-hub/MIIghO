@@ -1270,6 +1270,52 @@
                     </div>
                 </div>
 
+                <!-- PSP Gateway Abstraction & Sandbox Provider Section (Phase 3A.6) -->
+                <div style="background: var(--bg-surface-2); border: 1px solid var(--border-subtle); border-radius: var(--radius-lg); padding: 20px; margin-bottom: 24px;">
+                    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 14px; flex-wrap: wrap; gap: 10px;">
+                        <div>
+                            <div style="display: flex; align-items: center; gap: 8px;">
+                                <h3 style="font-family: 'Outfit'; font-size: 18px; font-weight: 800;">🔌 Passerelle PSP & Fournisseur Sandbox (PSP Gateway)</h3>
+                                <span class="status-dot badge-active" style="background: rgba(59, 130, 246, 0.15); color: #60A5FA;">PHASE 3A.6 ACTIVE</span>
+                            </div>
+                            <p style="font-size: 12px; color: var(--text-secondary); margin-top: 2px;">
+                                Abstraction multi-fournisseurs • Fournisseur Sandbox 100% local • 0 Appel réseau réel • Ledger découplé
+                            </p>
+                        </div>
+                        <div style="display: flex; align-items: center; gap: 12px;">
+                            <div style="text-align: right;">
+                                <span style="font-size: 11px; color: var(--text-muted);">Fournisseur Actif :</span>
+                                <div style="font-size: 14px; font-weight: 800; color: #60A5FA;">SANDBOX (Local)</div>
+                            </div>
+                            <button class="btn-action" style="background: #2563EB; padding: 8px 14px; font-size: 12px;" onclick="openPSPSimulatorModal()">⚡ Tester la Passerelle PSP</button>
+                        </div>
+                    </div>
+
+                    <!-- PSP Stats / Cards -->
+                    <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 12px; margin-bottom: 16px;">
+                        <div style="background: var(--bg-surface-1); border: 1px solid var(--border-subtle); border-radius: var(--radius-md); padding: 12px;">
+                            <div style="font-size: 11px; color: var(--text-muted);">Rail d'Exécution</div>
+                            <div style="font-size: 14px; font-weight: 700; color: var(--text-primary); margin-top: 2px;">Sandbox In-Memory</div>
+                            <div style="font-size: 10px; color: #10B981; margin-top: 2px;">● 0 secret • 0 appel externe</div>
+                        </div>
+                        <div style="background: var(--bg-surface-1); border: 1px solid var(--border-subtle); border-radius: var(--radius-md); padding: 12px;">
+                            <div style="font-size: 11px; color: var(--text-muted);">Transactions Traitées</div>
+                            <div style="font-size: 14px; font-weight: 700; color: #60A5FA; margin-top: 2px;" id="psp-tx-count-display">4 opérations</div>
+                            <div style="font-size: 10px; color: var(--text-muted); margin-top: 2px;">Traçabilité & corrélation</div>
+                        </div>
+                        <div style="background: var(--bg-surface-1); border: 1px solid var(--border-subtle); border-radius: var(--radius-md); padding: 12px;">
+                            <div style="font-size: 11px; color: var(--text-muted);">Webhooks Ingestés</div>
+                            <div style="font-size: 14px; font-weight: 700; color: var(--gold); margin-top: 2px;" id="psp-webhook-count-display">100% Dédupliqués</div>
+                            <div style="font-size: 10px; color: var(--text-muted); margin-top: 2px;">Idempotence garantie</div>
+                        </div>
+                    </div>
+
+                    <div style="display: flex; gap: 10px; flex-wrap: wrap;">
+                        <button class="btn-action" style="flex: 1; background: var(--bg-surface-1); border: 1px solid var(--border-medium); font-size: 12px;" onclick="openPSPWebhookModal()">📡 Simuler un Événement Webhook PSP</button>
+                        <button class="btn-action" style="flex: 1; background: var(--bg-surface-1); border: 1px solid var(--border-medium); font-size: 12px;" onclick="openPSPLogsModal()">📜 Journaux PSP & Traçabilité (psp_transactions)</button>
+                    </div>
+                </div>
+
                 <!-- Members Management Section -->
                 <div style="background: var(--bg-surface-2); border: 1px solid var(--border-subtle); border-radius: var(--radius-lg); padding: 20px;">
                     <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px;">
@@ -2536,7 +2582,7 @@
             const minF = parseInt(document.getElementById('fee-min-input').value, 10) || 0;
             const maxF = parseInt(document.getElementById('fee-max-input').value, 10) || 0;
 
-            activeFeeRule = {
+activeFeeRule = {
                 feeType,
                 fixedAmount: fixed,
                 percentageBps: bps,
@@ -2631,6 +2677,254 @@
                     </div>
                 `;
             }
+        }
+
+        // ════════════════════════════════════════════════
+        // PHASE 3A.6 INTERACTIVE PSP GATEWAY & WEBHOOKS
+        // ════════════════════════════════════════════════
+
+        let pspTransactionsLog = [
+            {
+                id: "tx-psp-001",
+                provider: "sandbox",
+                operation: "payment",
+                pspTxId: "SANDBOX-PAY-8f2a1b9c",
+                ref: "INTENT-9824-001",
+                amount: 10000,
+                status: "SUCCEEDED",
+                time: "Aujourd'hui 10:30"
+            },
+            {
+                id: "tx-psp-002",
+                provider: "sandbox",
+                operation: "payment",
+                pspTxId: "SANDBOX-PAY-3d7e5a1f",
+                ref: "INTENT-9824-002",
+                amount: 15000,
+                status: "SUCCEEDED",
+                time: "Aujourd'hui 11:15"
+            },
+            {
+                id: "tx-psp-003",
+                provider: "sandbox",
+                operation: "refund",
+                pspTxId: "SANDBOX-REF-6c4b2e8a",
+                ref: "REFUND-9824-001",
+                amount: 5000,
+                status: "SUCCEEDED",
+                time: "Aujourd'hui 14:00"
+            },
+            {
+                id: "tx-psp-004",
+                provider: "sandbox",
+                operation: "payout",
+                pspTxId: "SANDBOX-PAYOUT-9e1f3d5b",
+                ref: "SETTL-9824-001",
+                amount: 19800,
+                status: "SUCCEEDED",
+                time: "Aujourd'hui 16:45"
+            }
+        ];
+
+        function openPSPSimulatorModal() {
+            openModalContent(`
+                <h2 style="font-family: 'Outfit'; font-size: 20px; font-weight: 800; margin-bottom: 6px;">⚡ Simulateur Passerelle PSP</h2>
+                <p style="color: #60A5FA; font-size: 12px; margin-bottom: 16px;">Gateway Abstraction & Sandbox Provider (Phase 3A.6)</p>
+                
+                <div style="display: flex; flex-direction: column; gap: 12px;">
+                    <div style="background: rgba(59, 130, 246, 0.08); border: 1px solid rgba(59, 130, 246, 0.2); border-radius: 8px; padding: 10px; font-size: 11px; color: var(--text-secondary);">
+                        🛡️ <strong>Environnement 100% Local</strong> : Simulation déterministe en mémoire. Zéro appel réseau externe, zéro clé réelle.
+                    </div>
+
+                    <div>
+                        <label style="font-size: 12px; font-weight: 700; color: var(--text-secondary);">Opération PSP</label>
+                        <select id="psp-sim-op" style="width: 100%; padding: 10px; border-radius: 10px; border: 1px solid var(--border-subtle); background: var(--bg-surface-2); color: var(--text-primary); margin-top: 4px;">
+                            <option value="payment">Paiement Client (CreatePayment)</option>
+                            <option value="refund">Remboursement (RefundPayment)</option>
+                            <option value="payout">Virement Marchand (InitiatePayout)</option>
+                        </select>
+                    </div>
+
+                    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px;">
+                        <div>
+                            <label style="font-size: 12px; font-weight: 700; color: var(--text-secondary);">Montant (FCFA)</label>
+                            <input type="number" id="psp-sim-amount" value="5000" min="100" style="width: 100%; padding: 10px; border-radius: 10px; border: 1px solid var(--border-subtle); background: var(--bg-surface-2); color: var(--text-primary); margin-top: 4px;">
+                        </div>
+                        <div>
+                            <label style="font-size: 12px; font-weight: 700; color: var(--text-secondary);">Résultat Simulé</label>
+                            <select id="psp-sim-outcome" style="width: 100%; padding: 10px; border-radius: 10px; border: 1px solid var(--border-subtle); background: var(--bg-surface-2); color: var(--text-primary); margin-top: 4px;">
+                                <option value="SUCCEEDED">Succès Immédiat (SUCCEEDED)</option>
+                                <option value="FAILED">Échec (FAILED - Refus banque)</option>
+                                <option value="PROCESSING">En cours (PROCESSING / PENDING)</option>
+                                <option value="EXPIRED">Expiré (EXPIRED / Timeout)</option>
+                            </select>
+                        </div>
+                    </div>
+
+                    <button class="btn-action" style="width: 100%; background: #2563EB; margin-top: 6px;" onclick="runPSPSimulation()">🚀 Exécuter sur le Rail Sandbox</button>
+                    
+                    <div id="psp-sim-result-box" style="display: none; background: var(--bg-surface-2); border-radius: 10px; padding: 12px; border: 1px solid var(--border-subtle); font-size: 12px; flex-direction: column; gap: 6px;">
+                        <!-- Rempli dynamiquement -->
+                    </div>
+
+                    <button class="btn-action" style="width: 100%; background: var(--bg-surface-2);" onclick="closePayModal()">Fermer</button>
+                </div>
+            `);
+        }
+
+        function runPSPSimulation() {
+            const op = document.getElementById('psp-sim-op').value;
+            const amt = parseInt(document.getElementById('psp-sim-amount').value, 10) || 5000;
+            const outcome = document.getElementById('psp-sim-outcome').value;
+            const hex = Math.random().toString(16).substring(2, 10);
+            
+            let prefix = "SANDBOX-PAY-";
+            if (op === "refund") prefix = "SANDBOX-REF-";
+            if (op === "payout") prefix = "SANDBOX-PAYOUT-";
+            const pspTxId = prefix + hex;
+            const internalRef = "MÏÏGHO-REF-" + Math.random().toString(16).substring(2, 8).toUpperCase();
+
+            // Append to local log
+            pspTransactionsLog.unshift({
+                id: "tx-psp-" + Date.now(),
+                provider: "sandbox",
+                operation: op,
+                pspTxId: pspTxId,
+                ref: internalRef,
+                amount: amt,
+                status: outcome,
+                time: "À l'instant"
+            });
+
+            const countEl = document.getElementById('psp-tx-count-display');
+            if (countEl) countEl.innerText = pspTransactionsLog.length + " opérations";
+
+            const statusColors = {
+                SUCCEEDED: "#10B981",
+                FAILED: "#EF4444",
+                PROCESSING: "#F59E0B",
+                EXPIRED: "#94A3B8"
+            };
+
+            const box = document.getElementById('psp-sim-result-box');
+            box.style.display = 'flex';
+            box.innerHTML = `
+                <div style="display: flex; justify-content: space-between; font-weight: 700; color: #60A5FA;">
+                    <span>Réponse Normalisée Gateway</span>
+                    <span style="color: ${statusColors[outcome] || '#fff'};">${outcome}</span>
+                </div>
+                <div style="display: flex; justify-content: space-between;">
+                    <span style="color: var(--text-muted);">Fournisseur :</span>
+                    <span style="font-weight: 700;">sandbox</span>
+                </div>
+                <div style="display: flex; justify-content: space-between;">
+                    <span style="color: var(--text-muted);">PSP Transaction ID :</span>
+                    <span style="font-family: monospace; color: var(--gold);">${pspTxId}</span>
+                </div>
+                <div style="display: flex; justify-content: space-between;">
+                    <span style="color: var(--text-muted);">Référence Interne :</span>
+                    <span style="font-family: monospace;">${internalRef}</span>
+                </div>
+                <div style="display: flex; justify-content: space-between;">
+                    <span style="color: var(--text-muted);">Montant :</span>
+                    <span style="font-weight: 700;">${amt.toLocaleString('fr-FR')} FCFA</span>
+                </div>
+                <div style="display: flex; justify-content: space-between;">
+                    <span style="color: var(--text-muted);">Idempotence :</span>
+                    <span style="color: #10B981;">Garantie (provider + idemp_key)</span>
+                </div>
+                <div style="display: flex; justify-content: space-between;">
+                    <span style="color: var(--text-muted);">Isolation Ledger :</span>
+                    <span style="color: #10B981;">0 écriture directe PSP</span>
+                </div>
+            `;
+        }
+
+        function openPSPWebhookModal() {
+            openModalContent(`
+                <h2 style="font-family: 'Outfit'; font-size: 20px; font-weight: 800; margin-bottom: 6px;">📡 Simulation Webhook PSP</h2>
+                <p style="color: #60A5FA; font-size: 12px; margin-bottom: 16px;">Ingestion & Déduplication Idempotente (Phase 3A.6)</p>
+                
+                <div style="display: flex; flex-direction: column; gap: 12px;">
+                    <div>
+                        <label style="font-size: 12px; font-weight: 700; color: var(--text-secondary);">Type d'Événement</label>
+                        <select id="wh-event-type" style="width: 100%; padding: 10px; border-radius: 10px; border: 1px solid var(--border-subtle); background: var(--bg-surface-2); color: var(--text-primary); margin-top: 4px;">
+                            <option value="payment.succeeded">payment.succeeded (Paiement confirmé)</option>
+                            <option value="payment.failed">payment.failed (Paiement rejeté)</option>
+                            <option value="refund.succeeded">refund.succeeded (Remboursement traité)</option>
+                            <option value="payout.succeeded">payout.succeeded (Virement complété)</option>
+                        </select>
+                    </div>
+
+                    <div>
+                        <label style="font-size: 12px; font-weight: 700; color: var(--text-secondary);">Event ID (Idempotency Key)</label>
+                        <input type="text" id="wh-event-id" value="EVT-SANDBOX-${Math.random().toString(16).substring(2, 8).toUpperCase()}" style="width: 100%; padding: 10px; border-radius: 10px; border: 1px solid var(--border-subtle); background: var(--bg-surface-2); color: var(--text-primary); margin-top: 4px; font-family: monospace;">
+                    </div>
+
+                    <button class="btn-action" style="width: 100%; background: #2563EB;" onclick="runWebhookSimulation()">📥 Simuler Réception du Webhook</button>
+
+                    <div id="wh-sim-result" style="display: none; background: var(--bg-surface-2); border-radius: 10px; padding: 12px; border: 1px solid var(--border-subtle); font-size: 12px; flex-direction: column; gap: 6px;">
+                        <!-- Dynamique -->
+                    </div>
+
+                    <button class="btn-action" style="width: 100%; background: var(--bg-surface-2);" onclick="closePayModal()">Fermer</button>
+                </div>
+            `);
+        }
+
+        function runWebhookSimulation() {
+            const evtType = document.getElementById('wh-event-type').value;
+            const evtId = document.getElementById('wh-event-id').value;
+
+            const res = document.getElementById('wh-sim-result');
+            res.style.display = 'flex';
+            res.innerHTML = `
+                <div style="color: #10B981; font-weight: 800;">✓ Webhook Traité avec Succès</div>
+                <div style="display: flex; justify-content: space-between;">
+                    <span style="color: var(--text-muted);">Event ID :</span>
+                    <span style="font-family: monospace;">${evtId}</span>
+                </div>
+                <div style="display: flex; justify-content: space-between;">
+                    <span style="color: var(--text-muted);">Type :</span>
+                    <span style="font-weight: 700;">${evtType}</span>
+                </div>
+                <div style="display: flex; justify-content: space-between;">
+                    <span style="color: var(--text-muted);">Statut Ingestion :</span>
+                    <span style="color: #10B981; font-weight: 700;">PROCESSED (Table psp_webhook_events)</span>
+                </div>
+                <div style="display: flex; justify-content: space-between;">
+                    <span style="color: var(--text-muted);">Déduplication :</span>
+                    <span style="color: #60A5FA;">Idempotent (Même Event ID ignoré)</span>
+                </div>
+            `;
+        }
+
+        function openPSPLogsModal() {
+            let rowsHtml = pspTransactionsLog.map(tx => {
+                const color = tx.status === 'SUCCEEDED' ? '#10B981' : (tx.status === 'FAILED' ? '#EF4444' : '#F59E0B');
+                return `
+                    <div style="background: var(--bg-surface-2); border-radius: 8px; padding: 10px; margin-bottom: 8px; border: 1px solid var(--border-subtle); font-size: 11px;">
+                        <div style="display: flex; justify-content: space-between; margin-bottom: 4px;">
+                            <strong style="text-transform: uppercase; color: #60A5FA;">${tx.operation}</strong>
+                            <span style="color: ${color}; font-weight: 800;">${tx.status}</span>
+                        </div>
+                        <div style="color: var(--gold); font-family: monospace;">${tx.pspTxId}</div>
+                        <div style="display: flex; justify-content: space-between; color: var(--text-muted); margin-top: 4px;">
+                            <span>Ref: ${tx.ref}</span>
+                            <strong>${tx.amount.toLocaleString('fr-FR')} FCFA</strong>
+                        </div>
+                    </div>
+                `;
+            }).join('');
+
+            openModalContent(`
+                <h2 style="font-family: 'Outfit'; font-size: 20px; font-weight: 800; margin-bottom: 6px;">📜 Journaux de Passerelle PSP</h2>
+                <p style="color: #60A5FA; font-size: 12px; margin-bottom: 16px;">Table d'Audit psp_transactions (ON DELETE RESTRICT)</p>
+                <div style="max-height: 350px; overflow-y: auto;">
+                    ${rowsHtml}
+                </div>
+                <button class="btn-action" style="width: 100%; margin-top: 12px;" onclick="closePayModal()">Fermer</button>
+            `);
         }
 
         function switchView(viewKey) {
