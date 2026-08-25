@@ -39,6 +39,15 @@ type Repository interface {
 	GetPaymentIntent(ctx context.Context, id uuid.UUID) (*PaymentIntent, error)
 	GetPaymentIntentByIdempotencyKey(ctx context.Context, key string) (*PaymentIntent, error)
 	UpdatePaymentIntentStatus(ctx context.Context, id uuid.UUID, status PaymentIntentStatus, confirmedAt *time.Time, journalEntryID *uuid.UUID) error
+
+	// Refunds (Phase 3A.3)
+	CreateRefund(ctx context.Context, refund *Refund) error
+	GetRefund(ctx context.Context, id uuid.UUID) (*Refund, error)
+	GetRefundByIdempotencyKey(ctx context.Context, key string) (*Refund, error)
+	GetRefundsByPaymentIntent(ctx context.Context, paymentIntentID uuid.UUID) ([]*Refund, error)
+	GetRefundsByBusiness(ctx context.Context, businessID uuid.UUID) ([]*Refund, error)
+	UpdateRefundStatus(ctx context.Context, id uuid.UUID, status RefundStatus, completedAt *time.Time, journalEntryID *uuid.UUID) error
+	GetTotalRefundedAmount(ctx context.Context, paymentIntentID uuid.UUID) (int64, error)
 }
 
 // MemoryBusinessRepository is an in-memory repository for sandbox and unit testing with full ACID-like locking.
@@ -54,6 +63,8 @@ type MemoryBusinessRepository struct {
 	qrCodesByCode  map[string]*MerchantQR
 	paymentIntents map[uuid.UUID]*PaymentIntent
 	intentsByIdemp map[string]*PaymentIntent
+	refunds        map[uuid.UUID]*Refund
+	refundsByIdemp map[string]*Refund
 }
 
 func NewMemoryBusinessRepository(ledgerRepo ledger.Repository) *MemoryBusinessRepository {
@@ -68,6 +79,8 @@ func NewMemoryBusinessRepository(ledgerRepo ledger.Repository) *MemoryBusinessRe
 		qrCodesByCode:  make(map[string]*MerchantQR),
 		paymentIntents: make(map[uuid.UUID]*PaymentIntent),
 		intentsByIdemp: make(map[string]*PaymentIntent),
+		refunds:        make(map[uuid.UUID]*Refund),
+		refundsByIdemp: make(map[string]*Refund),
 	}
 }
 
@@ -426,6 +439,115 @@ func (r *MemoryBusinessRepository) UpdatePaymentIntentStatus(ctx context.Context
 		intent.JournalEntryID = journalEntryID
 	}
 	return nil
+}
+
+// Refunds (Memory - Phase 3A.3)
+
+func (r *MemoryBusinessRepository) CreateRefund(ctx context.Context, refund *Refund) error {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+
+	if refund.IdempotencyKey != "" {
+		if existing, ok := r.refundsByIdemp[refund.IdempotencyKey]; ok {
+			if existing.Amount != refund.Amount {
+				return ledger.ErrIdempotencyConflict
+			}
+			return ledger.ErrDuplicateIdempotency
+		}
+	}
+
+	if refund.ID == uuid.Nil {
+		refund.ID = uuid.New()
+	}
+	now := time.Now().UTC()
+	if refund.CreatedAt.IsZero() {
+		refund.CreatedAt = now
+	}
+
+	r.refunds[refund.ID] = refund
+	if refund.IdempotencyKey != "" {
+		r.refundsByIdemp[refund.IdempotencyKey] = refund
+	}
+	return nil
+}
+
+func (r *MemoryBusinessRepository) GetRefund(ctx context.Context, id uuid.UUID) (*Refund, error) {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+
+	refund, ok := r.refunds[id]
+	if !ok {
+		return nil, ErrRefundNotFound
+	}
+	return refund, nil
+}
+
+func (r *MemoryBusinessRepository) GetRefundByIdempotencyKey(ctx context.Context, key string) (*Refund, error) {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+
+	refund, ok := r.refundsByIdemp[key]
+	if !ok {
+		return nil, ErrRefundNotFound
+	}
+	return refund, nil
+}
+
+func (r *MemoryBusinessRepository) GetRefundsByPaymentIntent(ctx context.Context, paymentIntentID uuid.UUID) ([]*Refund, error) {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+
+	var result []*Refund
+	for _, ref := range r.refunds {
+		if ref.PaymentIntentID == paymentIntentID {
+			result = append(result, ref)
+		}
+	}
+	return result, nil
+}
+
+func (r *MemoryBusinessRepository) GetRefundsByBusiness(ctx context.Context, businessID uuid.UUID) ([]*Refund, error) {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+
+	var result []*Refund
+	for _, ref := range r.refunds {
+		if ref.BusinessID == businessID {
+			result = append(result, ref)
+		}
+	}
+	return result, nil
+}
+
+func (r *MemoryBusinessRepository) UpdateRefundStatus(ctx context.Context, id uuid.UUID, status RefundStatus, completedAt *time.Time, journalEntryID *uuid.UUID) error {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+
+	refund, ok := r.refunds[id]
+	if !ok {
+		return ErrRefundNotFound
+	}
+	refund.Status = status
+	if completedAt != nil {
+		refund.CompletedAt = completedAt
+	}
+	if journalEntryID != nil {
+		refund.JournalEntryID = journalEntryID
+	}
+	return nil
+}
+
+func (r *MemoryBusinessRepository) GetTotalRefundedAmount(ctx context.Context, paymentIntentID uuid.UUID) (int64, error) {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+
+	var total int64
+	for _, ref := range r.refunds {
+		if ref.PaymentIntentID == paymentIntentID && ref.Status == RefundSucceeded {
+			total += ref.Amount
+		}
+	}
+	return total, nil
 }
 
 // PostgresBusinessRepository provides PostgreSQL persistence for MÏÏghO Business Core.
@@ -952,4 +1074,156 @@ func (r *PostgresBusinessRepository) UpdatePaymentIntentStatus(ctx context.Conte
 		return ErrPaymentIntentNotFound
 	}
 	return nil
+}
+
+// Refunds (Postgres - Phase 3A.3)
+
+func (r *PostgresBusinessRepository) CreateRefund(ctx context.Context, refund *Refund) error {
+	if refund.ID == uuid.Nil {
+		refund.ID = uuid.New()
+	}
+	now := time.Now().UTC()
+	if refund.CreatedAt.IsZero() {
+		refund.CreatedAt = now
+	}
+
+	query := `
+		INSERT INTO refunds (id, payment_intent_id, business_id, payer_user_id, amount, currency, status, reason, idempotency_key, journal_entry_id, created_at, completed_at)
+		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
+	`
+	_, err := r.pool.Exec(ctx, query, refund.ID, refund.PaymentIntentID, refund.BusinessID, refund.PayerUserID, refund.Amount, refund.Currency, string(refund.Status), refund.Reason, refund.IdempotencyKey, refund.JournalEntryID, refund.CreatedAt, refund.CompletedAt)
+	return err
+}
+
+func (r *PostgresBusinessRepository) GetRefund(ctx context.Context, id uuid.UUID) (*Refund, error) {
+	query := `
+		SELECT id, payment_intent_id, business_id, payer_user_id, amount, currency, status, reason, idempotency_key, journal_entry_id, created_at, completed_at
+		FROM refunds
+		WHERE id = $1
+	`
+	var ref Refund
+	var status string
+	err := r.pool.QueryRow(ctx, query, id).Scan(
+		&ref.ID, &ref.PaymentIntentID, &ref.BusinessID, &ref.PayerUserID,
+		&ref.Amount, &ref.Currency, &status, &ref.Reason, &ref.IdempotencyKey,
+		&ref.JournalEntryID, &ref.CreatedAt, &ref.CompletedAt,
+	)
+	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return nil, ErrRefundNotFound
+		}
+		return nil, err
+	}
+	ref.Status = RefundStatus(status)
+	return &ref, nil
+}
+
+func (r *PostgresBusinessRepository) GetRefundByIdempotencyKey(ctx context.Context, key string) (*Refund, error) {
+	query := `
+		SELECT id, payment_intent_id, business_id, payer_user_id, amount, currency, status, reason, idempotency_key, journal_entry_id, created_at, completed_at
+		FROM refunds
+		WHERE idempotency_key = $1
+	`
+	var ref Refund
+	var status string
+	err := r.pool.QueryRow(ctx, query, key).Scan(
+		&ref.ID, &ref.PaymentIntentID, &ref.BusinessID, &ref.PayerUserID,
+		&ref.Amount, &ref.Currency, &status, &ref.Reason, &ref.IdempotencyKey,
+		&ref.JournalEntryID, &ref.CreatedAt, &ref.CompletedAt,
+	)
+	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return nil, ErrRefundNotFound
+		}
+		return nil, err
+	}
+	ref.Status = RefundStatus(status)
+	return &ref, nil
+}
+
+func (r *PostgresBusinessRepository) GetRefundsByPaymentIntent(ctx context.Context, paymentIntentID uuid.UUID) ([]*Refund, error) {
+	query := `
+		SELECT id, payment_intent_id, business_id, payer_user_id, amount, currency, status, reason, idempotency_key, journal_entry_id, created_at, completed_at
+		FROM refunds
+		WHERE payment_intent_id = $1
+		ORDER BY created_at DESC
+	`
+	rows, err := r.pool.Query(ctx, query, paymentIntentID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var refs []*Refund
+	for rows.Next() {
+		var ref Refund
+		var status string
+		if err := rows.Scan(
+			&ref.ID, &ref.PaymentIntentID, &ref.BusinessID, &ref.PayerUserID,
+			&ref.Amount, &ref.Currency, &status, &ref.Reason, &ref.IdempotencyKey,
+			&ref.JournalEntryID, &ref.CreatedAt, &ref.CompletedAt,
+		); err != nil {
+			return nil, err
+		}
+		ref.Status = RefundStatus(status)
+		refs = append(refs, &ref)
+	}
+	return refs, nil
+}
+
+func (r *PostgresBusinessRepository) GetRefundsByBusiness(ctx context.Context, businessID uuid.UUID) ([]*Refund, error) {
+	query := `
+		SELECT id, payment_intent_id, business_id, payer_user_id, amount, currency, status, reason, idempotency_key, journal_entry_id, created_at, completed_at
+		FROM refunds
+		WHERE business_id = $1
+		ORDER BY created_at DESC
+	`
+	rows, err := r.pool.Query(ctx, query, businessID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var refs []*Refund
+	for rows.Next() {
+		var ref Refund
+		var status string
+		if err := rows.Scan(
+			&ref.ID, &ref.PaymentIntentID, &ref.BusinessID, &ref.PayerUserID,
+			&ref.Amount, &ref.Currency, &status, &ref.Reason, &ref.IdempotencyKey,
+			&ref.JournalEntryID, &ref.CreatedAt, &ref.CompletedAt,
+		); err != nil {
+			return nil, err
+		}
+		ref.Status = RefundStatus(status)
+		refs = append(refs, &ref)
+	}
+	return refs, nil
+}
+
+func (r *PostgresBusinessRepository) UpdateRefundStatus(ctx context.Context, id uuid.UUID, status RefundStatus, completedAt *time.Time, journalEntryID *uuid.UUID) error {
+	query := `
+		UPDATE refunds
+		SET status = $1, completed_at = $2, journal_entry_id = $3
+		WHERE id = $4
+	`
+	tag, err := r.pool.Exec(ctx, query, string(status), completedAt, journalEntryID, id)
+	if err != nil {
+		return err
+	}
+	if tag.RowsAffected() == 0 {
+		return ErrRefundNotFound
+	}
+	return nil
+}
+
+func (r *PostgresBusinessRepository) GetTotalRefundedAmount(ctx context.Context, paymentIntentID uuid.UUID) (int64, error) {
+	query := `
+		SELECT COALESCE(SUM(amount), 0)
+		FROM refunds
+		WHERE payment_intent_id = $1 AND status = 'SUCCEEDED'
+	`
+	var total int64
+	err := r.pool.QueryRow(ctx, query, paymentIntentID).Scan(&total)
+	return total, err
 }

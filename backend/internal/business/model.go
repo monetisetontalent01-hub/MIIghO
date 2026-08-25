@@ -30,7 +30,63 @@ var (
 	ErrSelfPaymentNotAllowed         = errors.New("self-payment is not allowed: you cannot pay your own business")
 	ErrCurrencyMismatch              = errors.New("currency mismatch between payment and business")
 	ErrPaymentFailed                 = errors.New("payment failed: insufficient funds or transaction error")
+	ErrRefundNotFound                = errors.New("refund not found")
+	ErrRefundAmountExceedsRemaining  = errors.New("refund amount exceeds remaining refundable amount")
+	ErrPaymentNotEligibleForRefund   = errors.New("payment intent is not eligible for refund: status must be SUCCEEDED")
+	ErrAlreadyFullyRefunded          = errors.New("payment intent is already fully refunded")
+	ErrInvalidRefundAmount           = errors.New("refund amount must be strictly greater than zero")
 )
+
+type RefundStatus string
+
+const (
+	RefundRequested RefundStatus = "REQUESTED"
+	RefundSucceeded RefundStatus = "SUCCEEDED"
+	RefundFailed    RefundStatus = "FAILED"
+	RefundCancelled RefundStatus = "CANCELLED"
+)
+
+// Refund represents a merchant-initiated full or partial refund on a Succeeded Payment Intent.
+type Refund struct {
+	ID              uuid.UUID    `json:"id"`
+	PaymentIntentID uuid.UUID    `json:"payment_intent_id"`
+	BusinessID      uuid.UUID    `json:"business_id"`
+	PayerUserID     uuid.UUID    `json:"payer_user_id"`
+	Amount          int64        `json:"amount"` // in minor units / FCFA
+	Currency        string       `json:"currency"`
+	Status          RefundStatus `json:"status"`
+	Reason          string       `json:"reason,omitempty"`
+	IdempotencyKey  string       `json:"idempotency_key,omitempty"`
+	JournalEntryID  *uuid.UUID   `json:"journal_entry_id,omitempty"`
+	CreatedAt       time.Time    `json:"created_at"`
+	CompletedAt     *time.Time   `json:"completed_at,omitempty"`
+}
+
+// RefundReceipt represents the audit-proof receipt issued after a successful merchant refund.
+type RefundReceipt struct {
+	RefundID            uuid.UUID    `json:"refund_id"`
+	PaymentIntentID     uuid.UUID    `json:"payment_intent_id"`
+	BusinessID          uuid.UUID    `json:"business_id"`
+	BusinessName        string       `json:"business_name"`
+	PayerUserID         uuid.UUID    `json:"payer_user_id"`
+	OriginalAmount      int64        `json:"original_amount"`
+	RefundAmount        int64        `json:"refund_amount"`
+	TotalRefunded       int64        `json:"total_refunded"`
+	RemainingRefundable int64        `json:"remaining_refundable"`
+	Currency            string       `json:"currency"`
+	Status              RefundStatus `json:"status"`
+	Reason              string       `json:"reason,omitempty"`
+	JournalEntryID      *uuid.UUID   `json:"journal_entry_id,omitempty"`
+	CreatedAt           time.Time    `json:"created_at"`
+	CompletedAt         time.Time    `json:"completed_at"`
+	IsSandbox           bool         `json:"is_sandbox"`
+}
+
+type CreateRefundRequest struct {
+	Amount         int64  `json:"amount" validate:"required,gt=0"`
+	Reason         string `json:"reason,omitempty"`
+	IdempotencyKey string `json:"idempotency_key,omitempty"`
+}
 
 type MerchantQRStatus string
 

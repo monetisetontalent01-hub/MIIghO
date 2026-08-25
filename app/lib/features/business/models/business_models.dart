@@ -374,3 +374,114 @@ class MerchantPaymentReceiptModel {
   }
 }
 
+/// Modèle d'un remboursement marchand MÏÏghO
+class RefundModel {
+  final String id;
+  final String paymentIntentId;
+  final String businessId;
+  final String payerUserId;
+  final int amount;
+  final String currency;
+  final String status; // REQUESTED, SUCCEEDED, FAILED, CANCELLED
+  final String? reason;
+  final String? idempotencyKey;
+  final String? journalEntryId;
+  final DateTime createdAt;
+  final DateTime? completedAt;
+
+  RefundModel({
+    required this.id,
+    required this.paymentIntentId,
+    required this.businessId,
+    required this.payerUserId,
+    required this.amount,
+    required this.currency,
+    required this.status,
+    this.reason,
+    this.idempotencyKey,
+    this.journalEntryId,
+    required this.createdAt,
+    this.completedAt,
+  });
+
+  factory RefundModel.fromJson(Map<String, dynamic> json) {
+    return RefundModel(
+      id: json['id'] ?? '',
+      paymentIntentId: json['payment_intent_id'] ?? '',
+      businessId: json['business_id'] ?? '',
+      payerUserId: json['payer_user_id'] ?? '',
+      amount: (json['amount'] as num?)?.toInt() ?? 0,
+      currency: json['currency'] ?? 'FCFA',
+      status: json['status'] ?? 'REQUESTED',
+      reason: json['reason'],
+      idempotencyKey: json['idempotency_key'],
+      journalEntryId: json['journal_entry_id'],
+      createdAt: json['created_at'] != null ? DateTime.parse(json['created_at']) : DateTime.now(),
+      completedAt: json['completed_at'] != null ? DateTime.parse(json['completed_at']) : null,
+    );
+  }
+
+  bool get isSucceeded => status == 'SUCCEEDED';
+}
+
+/// Modèle de reçu de remboursement marchand (Audit-proof)
+class RefundReceiptModel {
+  final String refundId;
+  final String paymentIntentId;
+  final String businessId;
+  final String businessName;
+  final String payerUserId;
+  final int originalAmount;
+  final int refundAmount;
+  final int totalRefunded;
+  final int remainingRefundable;
+  final String currency;
+  final String status;
+  final String? reason;
+  final String? journalEntryId;
+  final DateTime createdAt;
+  final DateTime completedAt;
+  final bool isSandbox;
+
+  RefundReceiptModel({
+    required this.refundId,
+    required this.paymentIntentId,
+    required this.businessId,
+    required this.businessName,
+    required this.payerUserId,
+    required this.originalAmount,
+    required this.refundAmount,
+    required this.totalRefunded,
+    required this.remainingRefundable,
+    required this.currency,
+    required this.status,
+    this.reason,
+    this.journalEntryId,
+    required this.createdAt,
+    required this.completedAt,
+    this.isSandbox = true,
+  });
+
+  factory RefundReceiptModel.fromJson(Map<String, dynamic> json) {
+    return RefundReceiptModel(
+      refundId: json['refund_id'] ?? '',
+      paymentIntentId: json['payment_intent_id'] ?? '',
+      businessId: json['business_id'] ?? '',
+      businessName: json['business_name'] ?? '',
+      payerUserId: json['payer_user_id'] ?? '',
+      originalAmount: (json['original_amount'] as num?)?.toInt() ?? 0,
+      refundAmount: (json['refund_amount'] as num?)?.toInt() ?? 0,
+      totalRefunded: (json['total_refunded'] as num?)?.toInt() ?? 0,
+      remainingRefundable: (json['remaining_refundable'] as num?)?.toInt() ?? 0,
+      currency: json['currency'] ?? 'FCFA',
+      status: json['status'] ?? 'SUCCEEDED',
+      reason: json['reason'],
+      journalEntryId: json['journal_entry_id'],
+      createdAt: json['created_at'] != null ? DateTime.parse(json['created_at']) : DateTime.now(),
+      completedAt: json['completed_at'] != null ? DateTime.parse(json['completed_at']) : DateTime.now(),
+      isSandbox: json['is_sandbox'] ?? true,
+    );
+  }
+}
+
+

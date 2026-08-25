@@ -847,3 +847,278 @@ func (s *Service) ConfirmPaymentIntent(ctx context.Context, payerUserID, intentI
 		IsSandbox:       true,
 	}, nil
 }
+
+// ════════════════════════════════════════════════
+// MERCHANT REFUND METHODS (PHASE 3A.3)
+// ════════════════════════════════════════════════
+
+// RefundPayment executes a full or partial refund for a Succeeded Payment Intent.
+// Strictly append-only: Reverses postings via a new Journal Entry of type merchant_refund without altering historical data.
+func (s *Service) RefundPayment(ctx context.Context, requesterUserID, paymentIntentID uuid.UUID, req *CreateRefundRequest) (*RefundReceipt, error) {
+	if req.Amount <= 0 {
+		return nil, ErrInvalidRefundAmount
+	}
+
+	// 1. Fetch Payment Intent
+	intent, err := s.repo.GetPaymentIntent(ctx, paymentIntentID)
+	if err != nil {
+		return nil, err
+	}
+
+	// 2. Validate Payment Intent Status: Only SUCCEEDED payments can be refunded
+	if intent.Status != IntentSucceeded {
+		return nil, ErrPaymentNotEligibleForRefund
+	}
+
+	// 3. Fetch Business & Check Status
+	biz, err := s.repo.GetBusiness(ctx, intent.BusinessID)
+	if err != nil {
+		return nil, err
+	}
+
+	if biz.Status == StatusClosed {
+		return nil, ErrBusinessClosed
+	}
+	if biz.Status == StatusSuspended {
+		return nil, ErrBusinessSuspended
+	}
+
+	// 4. Authorization & IDOR Protection: Only OWNER and ADMIN of the business can initiate refunds
+	member, err := s.repo.GetMember(ctx, intent.BusinessID, requesterUserID)
+	if err != nil {
+		return nil, ErrUnauthorizedAccess
+	}
+
+	if member.Role != RoleOwner && member.Role != RoleAdmin {
+		return nil, ErrInsufficientPermission
+	}
+
+	// 5. Idempotency Check
+	if req.IdempotencyKey != "" {
+		if existing, err := s.repo.GetRefundByIdempotencyKey(ctx, req.IdempotencyKey); err == nil {
+			if existing.Amount != req.Amount {
+				return nil, fmt.Errorf("%w: existing amount=%d, requested amount=%d", ledger.ErrIdempotencyConflict, existing.Amount, req.Amount)
+			}
+			if existing.Status == RefundSucceeded {
+				totalRef, _ := s.repo.GetTotalRefundedAmount(ctx, intent.ID)
+				rem := intent.Amount - totalRef
+				completedAt := time.Now().UTC()
+				if existing.CompletedAt != nil {
+					completedAt = *existing.CompletedAt
+				}
+				return &RefundReceipt{
+					RefundID:            existing.ID,
+					PaymentIntentID:     intent.ID,
+					BusinessID:          biz.ID,
+					BusinessName:        biz.DisplayName,
+					PayerUserID:         intent.PayerUserID,
+					OriginalAmount:      intent.Amount,
+					RefundAmount:        existing.Amount,
+					TotalRefunded:       totalRef,
+					RemainingRefundable: rem,
+					Currency:            intent.Currency,
+					Status:              RefundSucceeded,
+					Reason:              existing.Reason,
+					JournalEntryID:      existing.JournalEntryID,
+					CreatedAt:           existing.CreatedAt,
+					CompletedAt:         completedAt,
+					IsSandbox:           true,
+				}, nil
+			}
+		}
+	}
+
+	// 6. Remaining Refundable Validation (Atomic lock safe)
+	totalRefunded, err := s.repo.GetTotalRefundedAmount(ctx, intent.ID)
+	if err != nil {
+		return nil, err
+	}
+
+	remaining := intent.Amount - totalRefunded
+	if remaining <= 0 {
+		return nil, ErrAlreadyFullyRefunded
+	}
+
+	if req.Amount > remaining {
+		return nil, fmt.Errorf("%w: requested %d, remaining refundable %d", ErrRefundAmountExceedsRemaining, req.Amount, remaining)
+	}
+
+	// 7. Fetch Business Account and Client Account
+	bizAcc, err := s.repo.GetBusinessAccount(ctx, biz.ID)
+	if err != nil {
+		return nil, ErrBusinessAccountNotFound
+	}
+
+	clientAcc, err := s.ledgerRepo.GetAccountByUserID(ctx, intent.PayerUserID, intent.Currency)
+	if err != nil {
+		return nil, err
+	}
+
+	// 8. Verify Business has sufficient funds to cover the refund
+	bizBalance, err := s.ledgerRepo.GetBalance(ctx, bizAcc.LedgerAccountID)
+	if err != nil {
+		return nil, err
+	}
+	if bizBalance < req.Amount {
+		return nil, fmt.Errorf("%w: business available balance %d is less than refund amount %d", ErrPaymentFailed, bizBalance, req.Amount)
+	}
+
+	// 9. Create Refund in REQUESTED status
+	now := time.Now().UTC()
+	refundID := uuid.New()
+	refund := &Refund{
+		ID:              refundID,
+		PaymentIntentID: intent.ID,
+		BusinessID:      biz.ID,
+		PayerUserID:     intent.PayerUserID,
+		Amount:          req.Amount,
+		Currency:        intent.Currency,
+		Status:          RefundRequested,
+		Reason:          req.Reason,
+		IdempotencyKey:  req.IdempotencyKey,
+		CreatedAt:       now,
+	}
+
+	if err := s.repo.CreateRefund(ctx, refund); err != nil {
+		if errors.Is(err, ledger.ErrDuplicateIdempotency) {
+			if existing, fetchErr := s.repo.GetRefundByIdempotencyKey(ctx, req.IdempotencyKey); fetchErr == nil {
+				totRef, _ := s.repo.GetTotalRefundedAmount(ctx, intent.ID)
+				rem := intent.Amount - totRef
+				completedAt := time.Now().UTC()
+				if existing.CompletedAt != nil {
+					completedAt = *existing.CompletedAt
+				}
+				return &RefundReceipt{
+					RefundID:            existing.ID,
+					PaymentIntentID:     intent.ID,
+					BusinessID:          biz.ID,
+					BusinessName:        biz.DisplayName,
+					PayerUserID:         intent.PayerUserID,
+					OriginalAmount:      intent.Amount,
+					RefundAmount:        existing.Amount,
+					TotalRefunded:       totRef,
+					RemainingRefundable: rem,
+					Currency:            intent.Currency,
+					Status:              RefundSucceeded,
+					Reason:              existing.Reason,
+					JournalEntryID:      existing.JournalEntryID,
+					CreatedAt:           existing.CreatedAt,
+					CompletedAt:         completedAt,
+					IsSandbox:           true,
+				}, nil
+			}
+		}
+		return nil, err
+	}
+
+	// 10. Execute Atomic Double-Entry Ledger Reversal
+	// Business: CRÉDIT (Asset decrease)
+	// Client: DÉBIT (Asset increase)
+	// Invariant: SUM(DR) == SUM(CR) == req.Amount
+	entryID := uuid.New()
+	ledgerRef := fmt.Sprintf("REFUND-%s", refundID.String())
+	ledgerIdempotencyKey := fmt.Sprintf("CONFIRM-REFUND-%s", refundID.String())
+	if req.IdempotencyKey != "" {
+		ledgerIdempotencyKey = fmt.Sprintf("REFUND-IDEMP-%s", req.IdempotencyKey)
+	}
+
+	entry := &ledger.JournalEntry{
+		ID:              entryID,
+		TransactionType: ledger.MerchantRefund,
+		ReferenceID:     ledgerRef,
+		Description:     fmt.Sprintf("Remboursement Marchand • %s", biz.DisplayName),
+		CreatedAt:       now,
+	}
+
+	postings := []*ledger.LedgerPosting{
+		{
+			ID:             uuid.New(),
+			JournalEntryID: entryID,
+			AccountID:      bizAcc.LedgerAccountID,
+			Amount:         req.Amount,
+			IsCredit:       true, // Credit business asset (decreases business balance)
+			CreatedAt:      now,
+		},
+		{
+			ID:             uuid.New(),
+			JournalEntryID: entryID,
+			AccountID:      clientAcc.ID,
+			Amount:         req.Amount,
+			IsCredit:       false, // Debit client asset (increases client balance)
+			CreatedAt:      now,
+		},
+	}
+
+	if err := s.ledgerRepo.PostJournalEntry(ctx, entry, postings, ledgerIdempotencyKey); err != nil {
+		if errors.Is(err, ledger.ErrDuplicateIdempotency) {
+			_ = s.repo.UpdateRefundStatus(ctx, refundID, RefundSucceeded, &now, &entryID)
+			totRef, _ := s.repo.GetTotalRefundedAmount(ctx, intent.ID)
+			rem := intent.Amount - totRef
+			return &RefundReceipt{
+				RefundID:            refundID,
+				PaymentIntentID:     intent.ID,
+				BusinessID:          biz.ID,
+				BusinessName:        biz.DisplayName,
+				PayerUserID:         intent.PayerUserID,
+				OriginalAmount:      intent.Amount,
+				RefundAmount:        req.Amount,
+				TotalRefunded:       totRef,
+				RemainingRefundable: rem,
+				Currency:            intent.Currency,
+				Status:              RefundSucceeded,
+				Reason:              req.Reason,
+				JournalEntryID:      &entryID,
+				CreatedAt:           now,
+				CompletedAt:         now,
+				IsSandbox:           true,
+			}, nil
+		}
+		_ = s.repo.UpdateRefundStatus(ctx, refundID, RefundFailed, nil, nil)
+		return nil, fmt.Errorf("%w: %v", ErrPaymentFailed, err)
+	}
+
+	// 11. Update Refund to SUCCEEDED
+	completedAt := time.Now().UTC()
+	if err := s.repo.UpdateRefundStatus(ctx, refundID, RefundSucceeded, &completedAt, &entryID); err != nil {
+		return nil, err
+	}
+
+	newTotalRefunded := totalRefunded + req.Amount
+	newRemaining := intent.Amount - newTotalRefunded
+
+	return &RefundReceipt{
+		RefundID:            refundID,
+		PaymentIntentID:     intent.ID,
+		BusinessID:          biz.ID,
+		BusinessName:        biz.DisplayName,
+		PayerUserID:         intent.PayerUserID,
+		OriginalAmount:      intent.Amount,
+		RefundAmount:        req.Amount,
+		TotalRefunded:       newTotalRefunded,
+		RemainingRefundable: newRemaining,
+		Currency:            intent.Currency,
+		Status:              RefundSucceeded,
+		Reason:              req.Reason,
+		JournalEntryID:      &entryID,
+		CreatedAt:           now,
+		CompletedAt:         completedAt,
+		IsSandbox:           true,
+	}, nil
+}
+
+// GetRefunds returns all refunds for a specific payment intent with IDOR verification.
+func (s *Service) GetRefunds(ctx context.Context, requestUserID, paymentIntentID uuid.UUID) ([]*Refund, error) {
+	intent, err := s.repo.GetPaymentIntent(ctx, paymentIntentID)
+	if err != nil {
+		return nil, err
+	}
+
+	// Authorization: Payer or Business Member can view refunds
+	if intent.PayerUserID != requestUserID {
+		if _, memberErr := s.repo.GetMember(ctx, intent.BusinessID, requestUserID); memberErr != nil {
+			return nil, ErrUnauthorizedAccess
+		}
+	}
+
+	return s.repo.GetRefundsByPaymentIntent(ctx, paymentIntentID)
+}

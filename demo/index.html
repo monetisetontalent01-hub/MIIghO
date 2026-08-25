@@ -1718,18 +1718,29 @@
                         </div>
                     `;
                 } else {
-                    receiptsContainer.innerHTML = bizReceipts.map(r => `
-                        <div style="display: flex; justify-content: space-between; align-items: center; background: var(--bg-surface-1); border: 1px solid var(--border-subtle); border-radius: var(--radius-md); padding: 10px 14px;">
-                            <div>
-                                <div style="font-weight: 700; font-size: 13px; color: var(--text-primary);">Encaissement QR Marchand</div>
-                                <div style="font-size: 11px; color: var(--text-muted); font-family: monospace;">${r.id} • ${r.date}</div>
+                    receiptsContainer.innerHTML = bizReceipts.map(r => {
+                        const remaining = r.amount - (r.refunded || 0);
+                        return `
+                            <div style="display: flex; justify-content: space-between; align-items: center; background: var(--bg-surface-1); border: 1px solid var(--border-subtle); border-radius: var(--radius-md); padding: 12px 14px; gap: 10px;">
+                                <div>
+                                    <div style="font-weight: 700; font-size: 13px; color: var(--text-primary);">Encaissement QR Marchand</div>
+                                    <div style="font-size: 11px; color: var(--text-muted); font-family: monospace;">${r.id} • ${r.date}</div>
+                                    ${r.refunded > 0 ? `<div style="font-size: 11px; color: #EF4444; margin-top: 2px;">Remboursé: ${r.refunded.toLocaleString()} ${r.currency}</div>` : ''}
+                                </div>
+                                <div style="display: flex; align-items: center; gap: 10px;">
+                                    <div style="text-align: right;">
+                                        <div style="font-weight: 800; font-size: 14px; color: #10B981;">+${r.amount.toLocaleString()} ${r.currency}</div>
+                                        <span style="font-size: 10px; font-weight: 700; color: #10B981; background: rgba(16,185,129,0.15); padding: 2px 6px; border-radius: 4px;">LEDGER POSTED</span>
+                                    </div>
+                                    ${remaining > 0 ? `
+                                        <button class="btn-action" style="padding: 4px 8px; font-size: 11px; background: rgba(139,92,246,0.2); color: #C4B5FD;" onclick="openRefundModal('${r.id}')">🔄 Rembourser</button>
+                                    ` : `
+                                        <span style="font-size: 10px; font-weight: 700; color: #EF4444; background: rgba(239,68,68,0.15); padding: 2px 6px; border-radius: 4px;">TOTALEMENT REMBOURSÉ</span>
+                                    `}
+                                </div>
                             </div>
-                            <div style="text-align: right;">
-                                <div style="font-weight: 800; font-size: 14px; color: #10B981;">+${r.amount.toLocaleString()} ${r.currency}</div>
-                                <span style="font-size: 10px; font-weight: 700; color: #10B981; background: rgba(16,185,129,0.15); padding: 2px 6px; border-radius: 4px;">LEDGER POSTED</span>
-                            </div>
-                        </div>
-                    `).join('');
+                        `;
+                    }).join('');
                 }
             }
         }
@@ -2003,6 +2014,7 @@
                 journalId: journalId,
                 bizName: biz.displayName,
                 amount: amount,
+                refunded: 0,
                 currency: biz.currency,
                 date: now.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' }),
                 status: 'SUCCEEDED'
@@ -2046,6 +2058,131 @@
                 </div>
 
                 <button class="btn-action" style="width: 100%;" onclick="closePayModal()">Fermer le Reçu</button>
+            `);
+        }
+
+        // ════════════════════════════════════════════════
+        // PHASE 3A.3 INTERACTIVE REFUND SIMULATOR
+        // ════════════════════════════════════════════════
+
+        function openRefundModal(receiptId) {
+            const r = merchantReceipts.find(item => item.id === receiptId);
+            if (!r) return;
+
+            const remaining = r.amount - (r.refunded || 0);
+
+            openModalContent(`
+                <h2 style="font-family: 'Outfit'; font-size: 20px; font-weight: 800; margin-bottom: 6px;">🔄 Remboursement Marchand</h2>
+                <p style="color: var(--primary-light); font-size: 12px; margin-bottom: 16px;">Ledger Reversal (Phase 3A.3) • Intégral ou Partiel</p>
+                
+                <div style="display: flex; flex-direction: column; gap: 12px;">
+                    <div style="background: var(--bg-surface-2); border-radius: 10px; padding: 12px; border: 1px solid var(--border-subtle); font-size: 12px;">
+                        <div style="display: flex; justify-content: space-between; margin-bottom: 4px;">
+                            <span style="color: var(--text-muted);">Paiement Initial :</span>
+                            <span style="font-weight: 700;">${r.amount.toLocaleString()} ${r.currency}</span>
+                        </div>
+                        <div style="display: flex; justify-content: space-between; margin-bottom: 4px;">
+                            <span style="color: var(--text-muted);">Déjà Remboursé :</span>
+                            <span style="font-weight: 700; color: #EF4444;">${(r.refunded || 0).toLocaleString()} ${r.currency}</span>
+                        </div>
+                        <div style="display: flex; justify-content: space-between;">
+                            <span style="color: var(--text-muted);">Restant Remboursable :</span>
+                            <span style="font-weight: 800; color: #10B981;">${remaining.toLocaleString()} ${r.currency}</span>
+                        </div>
+                    </div>
+
+                    <div>
+                        <label style="font-size: 12px; font-weight: 700; color: var(--text-secondary);">Montant à Rembourser (${r.currency})</label>
+                        <input type="number" id="refund-amount-input" value="${remaining}" max="${remaining}" min="1" style="width: 100%; padding: 10px; border-radius: 10px; border: 1px solid var(--border-subtle); background: var(--bg-surface-2); color: var(--text-primary); margin-top: 4px; font-size: 16px; font-weight: 700;">
+                    </div>
+
+                    <div>
+                        <label style="font-size: 12px; font-weight: 700; color: var(--text-secondary);">Motif du Remboursement</label>
+                        <input type="text" id="refund-reason-input" value="Retour article / geste commercial" style="width: 100%; padding: 10px; border-radius: 10px; border: 1px solid var(--border-subtle); background: var(--bg-surface-2); color: var(--text-primary); margin-top: 4px; font-size: 13px;">
+                    </div>
+
+                    <div style="background: rgba(245, 158, 11, 0.08); border: 1px solid rgba(245, 158, 11, 0.2); border-radius: 8px; padding: 10px; font-size: 11px; color: var(--text-secondary);">
+                        ⚖️ <strong>Ledger Reversal (Écriture de compensation)</strong> :<br>
+                        • Compte Marchand (Asset) : <strong>CRÉDIT</strong> (- Montant)<br>
+                        • Compte Client (Asset) : <strong>DÉBIT</strong> (+ Montant)<br>
+                        • Type Ledger : <strong>merchant_refund</strong> (Append-only)
+                    </div>
+
+                    <button class="btn-action" style="width: 100%; margin-top: 8px; background: #8B5CF6;" onclick="submitRefund('${r.id}')">Confirmer le Remboursement</button>
+                    <button class="btn-action" style="width: 100%; background: var(--bg-surface-2);" onclick="closePayModal()">Annuler</button>
+                </div>
+            `);
+        }
+
+        function submitRefund(receiptId) {
+            const r = merchantReceipts.find(item => item.id === receiptId);
+            if (!r) return;
+
+            const remaining = r.amount - (r.refunded || 0);
+            const refundAmt = parseInt(document.getElementById('refund-amount-input').value, 10);
+            const reason = document.getElementById('refund-reason-input').value.trim();
+
+            if (isNaN(refundAmt) || refundAmt <= 0) {
+                alert('Veuillez saisir un montant strictement supérieur à zéro.');
+                return;
+            }
+
+            if (refundAmt > remaining) {
+                alert(`Le montant dépasse le restant remboursable (${remaining.toLocaleString()} ${r.currency}).`);
+                return;
+            }
+
+            const biz = businessesData[activeBizKey];
+            if ((biz.balance || 0) < refundAmt) {
+                alert(`Solde insuffisant sur le compte entreprise pour effectuer ce remboursement.`);
+                return;
+            }
+
+            // Execute Double-Entry Reversal
+            biz.balance = (biz.balance || 0) - refundAmt;
+            r.refunded = (r.refunded || 0) + refundAmt;
+
+            const refundId = 'REF-' + Math.floor(100000 + Math.random() * 900000);
+            const journalId = 'JRNL-REV-' + Math.floor(100000 + Math.random() * 900000);
+            const now = new Date();
+
+            closePayModal();
+            renderBusinessView();
+
+            // Open Refund Receipt Modal
+            openModalContent(`
+                <div style="text-align: center; margin-bottom: 16px;">
+                    <div style="width: 56px; height: 56px; border-radius: 50%; background: rgba(139, 92, 246, 0.2); color: #A78BFA; font-size: 28px; display: flex; align-items: center; justify-content: center; margin: 0 auto 10px;">
+                        🔄
+                    </div>
+                    <h2 style="font-family: 'Outfit'; font-size: 22px; font-weight: 800; color: #A78BFA;">Remboursement Validé !</h2>
+                    <p style="font-size: 12px; color: var(--text-secondary);">Écriture de compensation Ledger enregistrée (Append-Only)</p>
+                </div>
+
+                <div style="background: var(--bg-surface-2); border-radius: 12px; padding: 16px; margin-bottom: 16px; display: flex; flex-direction: column; gap: 8px;">
+                    <div style="display: flex; justify-content: space-between; font-size: 13px;">
+                        <span style="color: var(--text-muted);">Montant Remboursé :</span>
+                        <span style="font-weight: 800; font-size: 16px; color: #EF4444;">-${refundAmt.toLocaleString()} ${r.currency}</span>
+                    </div>
+                    <div style="display: flex; justify-content: space-between; font-size: 12px;">
+                        <span style="color: var(--text-muted);">Restant Remboursable :</span>
+                        <span style="font-weight: 700; color: #10B981;">${(r.amount - r.refunded).toLocaleString()} ${r.currency}</span>
+                    </div>
+                    <div style="display: flex; justify-content: space-between; font-size: 12px;">
+                        <span style="color: var(--text-muted);">Refund ID :</span>
+                        <span style="font-family: monospace; color: var(--primary-light);">${refundId}</span>
+                    </div>
+                    <div style="display: flex; justify-content: space-between; font-size: 12px;">
+                        <span style="color: var(--text-muted);">Journal Entry ID :</span>
+                        <span style="font-family: monospace; color: var(--gold);">${journalId}</span>
+                    </div>
+                    <div style="display: flex; justify-content: space-between; font-size: 12px;">
+                        <span style="color: var(--text-muted);">Type Ledger :</span>
+                        <span style="font-weight: 700; color: #8B5CF6;">merchant_refund</span>
+                    </div>
+                </div>
+
+                <button class="btn-action" style="width: 100%;" onclick="closePayModal()">Fermer le Reçu de Remboursement</button>
             `);
         }
 

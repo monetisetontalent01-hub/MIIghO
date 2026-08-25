@@ -56,6 +56,10 @@ func (h *Handler) RegisterRoutes(g *echo.Group, authMiddleware echo.MiddlewareFu
 	payments.POST("/intents", h.handleCreatePaymentIntent)
 	payments.GET("/intents/:id", h.handleGetPaymentIntent)
 	payments.POST("/intents/:id/confirm", h.handleConfirmPaymentIntent)
+
+	// Refunds (Phase 3A.3)
+	payments.POST("/intents/:id/refunds", h.handleRefundPaymentIntent)
+	payments.GET("/intents/:id/refunds", h.handleGetRefunds)
 }
 
 func (h *Handler) getUserID(c echo.Context) (uuid.UUID, error) {
@@ -551,4 +555,78 @@ func (h *Handler) handleConfirmPaymentIntent(c echo.Context) error {
 	}
 
 	return common.SuccessResponse(c, receipt)
+}
+
+// ════════════════════════════════════════════════
+// MERCHANT REFUND HANDLERS (PHASE 3A.3)
+// ════════════════════════════════════════════════
+
+func (h *Handler) handleRefundPaymentIntent(c echo.Context) error {
+	userID, err := h.getUserID(c)
+	if err != nil {
+		return common.ErrUnauthorized
+	}
+
+	intentID, err := uuid.Parse(c.Param("id"))
+	if err != nil {
+		return echo.NewHTTPError(http.StatusBadRequest, "Invalid Payment Intent ID")
+	}
+
+	var req CreateRefundRequest
+	if err := c.Bind(&req); err != nil {
+		return echo.NewHTTPError(http.StatusBadRequest, "Invalid request body")
+	}
+
+	receipt, err := h.service.RefundPayment(c.Request().Context(), userID, intentID, &req)
+	if err != nil {
+		if errors.Is(err, ErrPaymentIntentNotFound) {
+			return common.ErrNotFound
+		}
+		if errors.Is(err, ErrUnauthorizedAccess) || errors.Is(err, ErrInsufficientPermission) {
+			return echo.NewHTTPError(http.StatusForbidden, err.Error())
+		}
+		if errors.Is(err, ErrPaymentNotEligibleForRefund) || errors.Is(err, ErrAlreadyFullyRefunded) {
+			return echo.NewHTTPError(http.StatusConflict, err.Error())
+		}
+		if errors.Is(err, ErrRefundAmountExceedsRemaining) || errors.Is(err, ErrInvalidRefundAmount) {
+			return echo.NewHTTPError(http.StatusUnprocessableEntity, err.Error())
+		}
+		if errors.Is(err, ErrBusinessClosed) || errors.Is(err, ErrBusinessSuspended) {
+			return echo.NewHTTPError(http.StatusConflict, err.Error())
+		}
+		if errors.Is(err, ErrPaymentFailed) {
+			return echo.NewHTTPError(http.StatusPaymentRequired, err.Error())
+		}
+		return echo.NewHTTPError(http.StatusBadRequest, err.Error())
+	}
+
+	return c.JSON(http.StatusCreated, map[string]interface{}{
+		"status": "success",
+		"data":   receipt,
+	})
+}
+
+func (h *Handler) handleGetRefunds(c echo.Context) error {
+	userID, err := h.getUserID(c)
+	if err != nil {
+		return common.ErrUnauthorized
+	}
+
+	intentID, err := uuid.Parse(c.Param("id"))
+	if err != nil {
+		return echo.NewHTTPError(http.StatusBadRequest, "Invalid Payment Intent ID")
+	}
+
+	refunds, err := h.service.GetRefunds(c.Request().Context(), userID, intentID)
+	if err != nil {
+		if errors.Is(err, ErrPaymentIntentNotFound) {
+			return common.ErrNotFound
+		}
+		if errors.Is(err, ErrUnauthorizedAccess) {
+			return echo.NewHTTPError(http.StatusForbidden, err.Error())
+		}
+		return echo.NewHTTPError(http.StatusInternalServerError, err.Error())
+	}
+
+	return common.SuccessResponse(c, refunds)
 }
