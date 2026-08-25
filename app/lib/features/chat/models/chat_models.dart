@@ -49,6 +49,44 @@ class MiighoConversation {
       isGroup: json['type'] == 'group',
     );
   }
+
+  MiighoConversation copyWith({
+    String? id,
+    String? title,
+    String? subtitle,
+    String? avatarUrl,
+    DateTime? updatedAt,
+    int? unreadCount,
+    bool? isPinned,
+    bool? isMuted,
+    bool? isGroup,
+    bool? isOnline,
+    bool? isTyping,
+    String? typingUserName,
+    bool? isLastMessageFromMe,
+    MessageDeliveryStatus? lastMessageStatus,
+    ConversationMessageType? messageType,
+    bool? isVerified,
+  }) {
+    return MiighoConversation(
+      id: id ?? this.id,
+      title: title ?? this.title,
+      subtitle: subtitle ?? this.subtitle,
+      avatarUrl: avatarUrl ?? this.avatarUrl,
+      updatedAt: updatedAt ?? this.updatedAt,
+      unreadCount: unreadCount ?? this.unreadCount,
+      isPinned: isPinned ?? this.isPinned,
+      isMuted: isMuted ?? this.isMuted,
+      isGroup: isGroup ?? this.isGroup,
+      isOnline: isOnline ?? this.isOnline,
+      isTyping: isTyping ?? this.isTyping,
+      typingUserName: typingUserName ?? this.typingUserName,
+      isLastMessageFromMe: isLastMessageFromMe ?? this.isLastMessageFromMe,
+      lastMessageStatus: lastMessageStatus ?? this.lastMessageStatus,
+      messageType: messageType ?? this.messageType,
+      isVerified: isVerified ?? this.isVerified,
+    );
+  }
 }
 
 class MiighoMessageItem {
