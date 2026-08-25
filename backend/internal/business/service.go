@@ -1937,10 +1937,18 @@ func (s *Service) CollectFeeOnPayment(ctx context.Context, businessID uuid.UUID,
 	}
 
 	if err := s.ledgerRepo.PostJournalEntry(ctx, entry, postings, ledgerIdempKey); err != nil {
-		// If idempotency conflict on ledger side, check if fee tx already exists
-		if idempotencyKey != "" {
-			if existing, findErr := s.repo.GetFeeTransactionByIdempotencyKey(ctx, idempotencyKey); findErr == nil {
-				return existing, nil
+		// If idempotency conflict on ledger side, wait for the winning goroutine to persist fee tx
+		if errors.Is(err, ledger.ErrDuplicateIdempotency) {
+			for retries := 0; retries < 10; retries++ {
+				if idempotencyKey != "" {
+					if existing, findErr := s.repo.GetFeeTransactionByIdempotencyKey(ctx, idempotencyKey); findErr == nil {
+						return existing, nil
+					}
+				}
+				if existing, findErr := s.repo.GetFeeTransactionBySource(ctx, paymentIntentID, "merchant_payment"); findErr == nil {
+					return existing, nil
+				}
+				time.Sleep(2 * time.Millisecond)
 			}
 		}
 		return nil, err
@@ -1968,6 +1976,11 @@ func (s *Service) CollectFeeOnPayment(ctx context.Context, businessID uuid.UUID,
 	if err := s.repo.CreateFeeTransaction(ctx, feeTx); err != nil {
 		// If duplicate source transaction, return existing
 		if errors.Is(err, ErrDuplicateFeeTransaction) || errors.Is(err, ErrFeeAlreadyCollected) {
+			if idempotencyKey != "" {
+				if existing, findErr := s.repo.GetFeeTransactionByIdempotencyKey(ctx, idempotencyKey); findErr == nil {
+					return existing, nil
+				}
+			}
 			if existing, findErr := s.repo.GetFeeTransactionBySource(ctx, paymentIntentID, "merchant_payment"); findErr == nil {
 				return existing, nil
 			}

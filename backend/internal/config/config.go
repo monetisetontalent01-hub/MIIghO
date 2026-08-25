@@ -56,6 +56,10 @@ type Config struct {
 		APIKey   string `envconfig:"SMS_API_KEY" default:""`
 		SenderID string `envconfig:"SMS_SENDER_ID" default:"MIIGHO"`
 	}
+
+	PSP struct {
+		Provider string `envconfig:"PSP_PROVIDER" default:"sandbox"`
+	}
 }
 
 // Load reads configuration from environment variables and returns a Config struct.

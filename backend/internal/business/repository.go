@@ -495,6 +495,20 @@ func (r *MemoryBusinessRepository) CreateRefund(ctx context.Context, refund *Ref
 		}
 	}
 
+	// Atomic remaining refundable check under lock
+	intent, ok := r.paymentIntents[refund.PaymentIntentID]
+	if ok {
+		var total int64
+		for _, ref := range r.refunds {
+			if ref.PaymentIntentID == refund.PaymentIntentID && (ref.Status == RefundSucceeded || ref.Status == RefundRequested) {
+				total += ref.Amount
+			}
+		}
+		if total+refund.Amount > intent.Amount {
+			return ErrRefundAmountExceedsRemaining
+		}
+	}
+
 	if refund.ID == uuid.Nil {
 		refund.ID = uuid.New()
 	}
