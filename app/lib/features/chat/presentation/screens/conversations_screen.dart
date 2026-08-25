@@ -44,9 +44,7 @@ class _ConversationsScreenState extends State<ConversationsScreen> {
         onContactSelected: (contact) {
           context.read<ChatBloc>().add(
                 CreateConversationEvent(
-                  title: contact.displayName,
-                  isGroup: false,
-                  initialMessage: 'Discussion démarrée avec ${contact.displayName}',
+                  recipientId: contact.id,
                 ),
               );
           if (widget.onConversationSelected != null) {
@@ -67,10 +65,9 @@ class _ConversationsScreenState extends State<ConversationsScreen> {
       builder: (ctx) => CreateGroupDialog(
         onGroupCreated: (groupName, members) {
           context.read<ChatBloc>().add(
-                CreateConversationEvent(
-                  title: groupName,
-                  isGroup: true,
-                  initialMessage: 'Groupe créé avec ${members.length} membres',
+                CreateGroupEvent(
+                  name: groupName,
+                  memberIds: members.map((m) => m.id).toList(),
                 ),
               );
           ScaffoldMessenger.of(context).showSnackBar(

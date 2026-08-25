@@ -3,7 +3,6 @@ import '../../../core/network/api_client.dart';
 import '../../../core/network/ws_client.dart';
 import '../../../core/storage/secure_storage.dart';
 import '../models/chat_models.dart';
-import '../../../shared/widgets/conversation_tile.dart' show MessageDeliveryStatus;
 import '../presentation/widgets/message_bubble.dart' show MessageBubbleType;
 
 class ChatRepository {
@@ -17,113 +16,140 @@ class ChatRepository {
     required this.secureStorage,
   });
 
+  /// Retrieves list of user's active conversations from the server.
   Future<List<MiighoConversation>> getConversations() async {
-    try {
-      final response = await apiClient.get('/chat/conversations');
-      final data = response.data;
-      if (data is Map<String, dynamic> && data['data'] is List) {
-        return (data['data'] as List)
-            .map((c) => MiighoConversation.fromJson(c as Map<String, dynamic>))
-            .toList();
-      }
-      return _getFallbackConversations();
-    } catch (_) {
-      return _getFallbackConversations();
+    final response = await apiClient.get('/chat/conversations');
+    final data = response.data;
+    if (data is Map<String, dynamic> && data['data'] is List) {
+      return (data['data'] as List)
+          .map((c) => MiighoConversation.fromJson(c as Map<String, dynamic>))
+          .toList();
     }
+    return [];
   }
 
+  /// Retrieves paginated messages for a conversation.
   Future<List<MiighoMessageItem>> getMessages(String conversationId) async {
-    try {
-      final response = await apiClient.get('/chat/conversations/$conversationId/messages');
-      final data = response.data;
-      if (data is Map<String, dynamic> && data['data'] is List) {
-        final currentUserId = await secureStorage.getUserId();
-        return (data['data'] as List).map((m) {
-          final map = m as Map<String, dynamic>;
-          final senderId = map['sender_id'] as String?;
-          final isMe = senderId != null && senderId == currentUserId;
-          return MiighoMessageItem(
-            id: map['id'] as String,
-            conversationId: conversationId,
-            content: map['content'] as String? ?? '',
-            isMe: isMe,
-            status: MessageDeliveryStatus.read,
-            timestamp: map['created_at'] != null
-                ? DateTime.parse(map['created_at'])
-                : DateTime.now(),
-          );
-        }).toList();
-      }
-      return _getFallbackMessages(conversationId);
-    } catch (_) {
-      return _getFallbackMessages(conversationId);
+    final response = await apiClient.get('/chat/conversations/$conversationId/messages');
+    final data = response.data;
+    if (data is Map<String, dynamic> && data['data'] is List) {
+      final currentUserId = await secureStorage.getUserId() ?? '';
+      return (data['data'] as List).map((m) {
+        return MiighoMessageItem.fromJson(m as Map<String, dynamic>, currentUserId: currentUserId);
+      }).toList();
     }
+    return [];
   }
 
-  Future<void> sendMessage({
+  /// Persists a new message to the backend and returns the official server-confirmed item.
+  Future<MiighoMessageItem> sendMessage({
     required String conversationId,
     required String content,
     MessageBubbleType type = MessageBubbleType.text,
+    String? replyToId,
     String? mediaPath,
+    String? mediaUrl,
+    Map<String, dynamic>? metadata,
   }) async {
-    // Send through WebSocket for real-time low bandwidth
-    wsClient.sendMessage({
-      'type': 'SendMessage',
-      'conversation_id': conversationId,
+    final body = {
       'content': content,
-      'msg_type': type.name,
-      'media_path': mediaPath,
-    });
+      'type': type.name,
+      if (replyToId != null) 'reply_to_id': replyToId,
+      'metadata': {
+        if (mediaUrl != null) 'media_url': mediaUrl,
+        if (metadata != null) ...metadata,
+      },
+    };
+
+    final response = await apiClient.post(
+      '/chat/conversations/$conversationId/messages',
+      data: body,
+    );
+
+    final currentUserId = await secureStorage.getUserId() ?? '';
+    final data = response.data;
+    if (data is Map<String, dynamic> && data['data'] != null) {
+      return MiighoMessageItem.fromJson(
+        data['data'] as Map<String, dynamic>,
+        currentUserId: currentUserId,
+      );
+    }
+
+    throw Exception('Failed to send message: invalid server response');
   }
 
-  List<MiighoConversation> _getFallbackConversations() {
-    return [
-      MiighoConversation(
-        id: 'conv_0',
-        title: 'Amina Diallo',
-        subtitle: 'Parfait, on valide les maquettes !',
-        updatedAt: DateTime.now().subtract(const Duration(minutes: 2)),
-        unreadCount: 3,
-        isPinned: true,
-        isOnline: true,
-        isVerified: true,
-      ),
-      MiighoConversation(
-        id: 'conv_1',
-        title: 'Équipe MÏÏghO Core',
-        subtitle: 'Réunion de cadrage technique à 10h',
-        updatedAt: DateTime.now().subtract(const Duration(minutes: 20)),
-        isGroup: true,
-      ),
-      MiighoConversation(
-        id: 'conv_2',
-        title: 'Kofi Mensah',
-        subtitle: 'Message vocal reçu',
-        updatedAt: DateTime.now().subtract(const Duration(minutes: 38)),
-        unreadCount: 1,
-        isMuted: true,
-      ),
-    ];
+  /// Creates a new direct conversation with a recipient user.
+  Future<MiighoConversation> createConversation(String recipientId) async {
+    final response = await apiClient.post(
+      '/chat/conversations',
+      data: {'recipient_id': recipientId},
+    );
+    final data = response.data;
+    if (data is Map<String, dynamic> && data['data'] != null) {
+      return MiighoConversation.fromJson(data['data'] as Map<String, dynamic>);
+    }
+    throw Exception('Failed to create direct conversation');
   }
 
-  List<MiighoMessageItem> _getFallbackMessages(String conversationId) {
-    return [
-      MiighoMessageItem(
-        id: '1',
-        conversationId: conversationId,
-        content: 'Bonjour ! Bienvenue sur MÏÏghO, l\'écosystème numérique africain.',
-        isMe: false,
-        status: MessageDeliveryStatus.read,
-        timestamp: DateTime.now().subtract(const Duration(minutes: 25)),
-      ),
-      MiighoMessageItem(
-        id: '2',
-        conversationId: conversationId,
-        content: 'Merci ! L\'application est très fluide et rapide.',
-        isMe: true,
-        status: MessageDeliveryStatus.read,
-        timestamp: DateTime.now().subtract(const Duration(minutes: 20)),
-      ),
-    ];
+  /// Creates a new group conversation with multiple member IDs.
+  Future<MiighoConversation> createGroup(String name, List<String> memberIds) async {
+    final response = await apiClient.post(
+      '/chat/conversations',
+      data: {
+        'type': 'group',
+        'name': name,
+        'member_ids': memberIds,
+      },
+    );
+    final data = response.data;
+    if (data is Map<String, dynamic> && data['data'] != null) {
+      return MiighoConversation.fromJson(data['data'] as Map<String, dynamic>);
+    }
+    throw Exception('Failed to create group conversation');
+  }
+
+  /// Marks conversation messages as read up to a message ID.
+  Future<void> markRead(String conversationId, String messageId) async {
+    await apiClient.post(
+      '/chat/conversations/$conversationId/read',
+      data: {'message_id': messageId},
+    );
+  }
+
+  /// Adds an emoji reaction to a message.
+  Future<void> addReaction(String messageId, String emoji) async {
+    await apiClient.post(
+      '/chat/messages/$messageId/reactions',
+      data: {'emoji': emoji},
+    );
+  }
+
+  /// Removes an emoji reaction from a message.
+  Future<void> removeReaction(String messageId, String emoji) async {
+    await apiClient.delete(
+      '/chat/messages/$messageId/reactions?emoji=${Uri.encodeComponent(emoji)}',
+    );
+  }
+
+  /// Modifies an existing message (author only).
+  Future<MiighoMessageItem> editMessage(String messageId, String newContent) async {
+    final response = await apiClient.patch(
+      '/chat/messages/$messageId',
+      data: {'content': newContent},
+    );
+    final currentUserId = await secureStorage.getUserId() ?? '';
+    final data = response.data;
+    if (data is Map<String, dynamic> && data['data'] != null) {
+      return MiighoMessageItem.fromJson(
+        data['data'] as Map<String, dynamic>,
+        currentUserId: currentUserId,
+      );
+    }
+    throw Exception('Failed to edit message');
+  }
+
+  /// Soft-deletes a message (author only).
+  Future<void> deleteMessage(String messageId) async {
+    await apiClient.delete('/chat/messages/$messageId');
   }
 }

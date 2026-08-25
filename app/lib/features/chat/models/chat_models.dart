@@ -97,6 +97,7 @@ class MiighoMessageItem {
   final MessageBubbleType type;
   final MessageDeliveryStatus status;
   final DateTime timestamp;
+  final DateTime? editedAt;
   final String? mediaPath;
   final String? mediaUrl;
   final String? mediaFileName;
@@ -113,6 +114,7 @@ class MiighoMessageItem {
     this.type = MessageBubbleType.text,
     this.status = MessageDeliveryStatus.sent,
     required this.timestamp,
+    this.editedAt,
     this.mediaPath,
     this.mediaUrl,
     this.mediaFileName,
@@ -122,6 +124,103 @@ class MiighoMessageItem {
     this.reactions = const [],
   });
 
+  factory MiighoMessageItem.fromJson(Map<String, dynamic> json, {required String currentUserId}) {
+    final senderId = json['sender_id'] as String?;
+    final isMe = senderId != null && senderId == currentUserId;
+    
+    // Parse message type
+    final typeStr = json['type'] as String? ?? 'text';
+    MessageBubbleType msgType = MessageBubbleType.text;
+    switch (typeStr) {
+      case 'image':
+        msgType = MessageBubbleType.image;
+        break;
+      case 'video':
+        msgType = MessageBubbleType.video;
+        break;
+      case 'voice':
+        msgType = MessageBubbleType.voice;
+        break;
+      case 'audio':
+        msgType = MessageBubbleType.audio;
+        break;
+      case 'file':
+      case 'document':
+        msgType = MessageBubbleType.document;
+        break;
+      default:
+        msgType = MessageBubbleType.text;
+    }
+
+    // Parse status
+    final statusStr = json['status'] as String? ?? 'sent';
+    MessageDeliveryStatus msgStatus = MessageDeliveryStatus.sent;
+    switch (statusStr) {
+      case 'sending':
+        msgStatus = MessageDeliveryStatus.sending;
+        break;
+      case 'sent':
+        msgStatus = MessageDeliveryStatus.sent;
+        break;
+      case 'delivered':
+        msgStatus = MessageDeliveryStatus.delivered;
+        break;
+      case 'read':
+        msgStatus = MessageDeliveryStatus.read;
+        break;
+      case 'failed':
+        msgStatus = MessageDeliveryStatus.failed;
+        break;
+    }
+
+    // Parse reactions
+    List<MessageReactionData> reactionList = [];
+    if (json['reactions'] is List) {
+      final rawReactions = json['reactions'] as List;
+      final Map<String, List<String>> reactionMap = {};
+      for (final r in rawReactions) {
+        if (r is Map<String, dynamic>) {
+          final emoji = r['emoji'] as String? ?? '';
+          final uid = r['user_id'] as String? ?? '';
+          if (emoji.isNotEmpty) {
+            reactionMap.putIfAbsent(emoji, () => []).add(uid);
+          }
+        }
+      }
+      reactionList = reactionMap.entries.map((entry) {
+        return MessageReactionData(
+          emoji: entry.key,
+          count: entry.value.length,
+          hasReacted: entry.value.contains(currentUserId),
+          userIds: entry.value,
+        );
+      }).toList();
+    }
+
+    // Parse metadata
+    final metadata = json['metadata'] as Map<String, dynamic>?;
+    final mediaUrl = metadata?['media_url'] as String? ?? json['media_url'] as String?;
+    final mediaFileName = metadata?['file_name'] as String?;
+    final mediaFileSize = metadata?['file_size'] as int?;
+    final durationSeconds = metadata?['duration_seconds'] as int?;
+
+    return MiighoMessageItem(
+      id: json['id'] as String,
+      conversationId: json['conversation_id'] as String? ?? '',
+      content: json['content'] as String? ?? '',
+      isMe: isMe,
+      type: msgType,
+      status: msgStatus,
+      timestamp: json['created_at'] != null ? DateTime.parse(json['created_at']) : DateTime.now(),
+      editedAt: json['edited_at'] != null ? DateTime.parse(json['edited_at']) : null,
+      mediaUrl: mediaUrl,
+      mediaFileName: mediaFileName,
+      mediaFileSize: mediaFileSize,
+      mediaDuration: durationSeconds != null ? Duration(seconds: durationSeconds) : null,
+      reactions: reactionList,
+    );
+  }
+
   MiighoMessageItem copyWith({
     String? id,
     String? conversationId,
@@ -130,6 +229,7 @@ class MiighoMessageItem {
     MessageBubbleType? type,
     MessageDeliveryStatus? status,
     DateTime? timestamp,
+    DateTime? editedAt,
     String? mediaPath,
     String? mediaUrl,
     String? mediaFileName,
@@ -146,6 +246,7 @@ class MiighoMessageItem {
       type: type ?? this.type,
       status: status ?? this.status,
       timestamp: timestamp ?? this.timestamp,
+      editedAt: editedAt ?? this.editedAt,
       mediaPath: mediaPath ?? this.mediaPath,
       mediaUrl: mediaUrl ?? this.mediaUrl,
       mediaFileName: mediaFileName ?? this.mediaFileName,

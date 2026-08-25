@@ -55,14 +55,14 @@ class SendMediaMessage extends ChatEvent {
 }
 
 class CreateConversationEvent extends ChatEvent {
-  final String title;
-  final bool isGroup;
-  final String? initialMessage;
-  CreateConversationEvent({
-    required this.title,
-    required this.isGroup,
-    this.initialMessage,
-  });
+  final String recipientId;
+  CreateConversationEvent({required this.recipientId});
+}
+
+class CreateGroupEvent extends ChatEvent {
+  final String name;
+  final List<String> memberIds;
+  CreateGroupEvent({required this.name, required this.memberIds});
 }
 
 class TogglePinConversationEvent extends ChatEvent {
@@ -86,9 +86,55 @@ class AddReactionEvent extends ChatEvent {
   });
 }
 
-class MessageReceivedEvent extends ChatEvent {
-  final MiighoMessageItem message;
-  MessageReceivedEvent(this.message);
+class RemoveReactionEvent extends ChatEvent {
+  final String conversationId;
+  final String messageId;
+  final String emoji;
+  RemoveReactionEvent({
+    required this.conversationId,
+    required this.messageId,
+    required this.emoji,
+  });
+}
+
+class EditMessageEvent extends ChatEvent {
+  final String conversationId;
+  final String messageId;
+  final String newContent;
+  EditMessageEvent({
+    required this.conversationId,
+    required this.messageId,
+    required this.newContent,
+  });
+}
+
+class DeleteMessageEvent extends ChatEvent {
+  final String conversationId;
+  final String messageId;
+  DeleteMessageEvent({
+    required this.conversationId,
+    required this.messageId,
+  });
+}
+
+class MarkConversationReadEvent extends ChatEvent {
+  final String conversationId;
+  final String messageId;
+  MarkConversationReadEvent({
+    required this.conversationId,
+    required this.messageId,
+  });
+}
+
+class SendTypingEvent extends ChatEvent {
+  final String conversationId;
+  final bool isTyping;
+  SendTypingEvent({required this.conversationId, required this.isTyping});
+}
+
+class WsEnvelopeReceivedEvent extends ChatEvent {
+  final Map<String, dynamic> envelope;
+  WsEnvelopeReceivedEvent(this.envelope);
 }
 
 // States
@@ -118,15 +164,27 @@ class ConversationsLoaded extends ChatState {
 class MessagesLoaded extends ChatState {
   final String conversationId;
   final List<MiighoMessageItem> messages;
-  MessagesLoaded({required this.conversationId, required this.messages});
+  final bool isPeerTyping;
+  final String? peerTypingName;
+
+  MessagesLoaded({
+    required this.conversationId,
+    required this.messages,
+    this.isPeerTyping = false,
+    this.peerTypingName,
+  });
 
   MessagesLoaded copyWith({
     String? conversationId,
     List<MiighoMessageItem>? messages,
+    bool? isPeerTyping,
+    String? peerTypingName,
   }) {
     return MessagesLoaded(
       conversationId: conversationId ?? this.conversationId,
       messages: messages ?? this.messages,
+      isPeerTyping: isPeerTyping ?? this.isPeerTyping,
+      peerTypingName: peerTypingName ?? this.peerTypingName,
     );
   }
 }
@@ -149,13 +207,21 @@ class ChatBloc extends Bloc<ChatEvent, ChatState> {
     on<SendVoiceMessage>(_onSendVoiceMessage);
     on<SendMediaMessage>(_onSendMediaMessage);
     on<CreateConversationEvent>(_onCreateConversation);
+    on<CreateGroupEvent>(_onCreateGroup);
     on<TogglePinConversationEvent>(_onTogglePinConversation);
     on<ToggleMuteConversationEvent>(_onToggleMuteConversation);
     on<AddReactionEvent>(_onAddReaction);
-    on<MessageReceivedEvent>(_onMessageReceived);
+    on<RemoveReactionEvent>(_onRemoveReaction);
+    on<EditMessageEvent>(_onEditMessage);
+    on<DeleteMessageEvent>(_onDeleteMessage);
+    on<MarkConversationReadEvent>(_onMarkConversationRead);
+    on<SendTypingEvent>(_onSendTyping);
+    on<WsEnvelopeReceivedEvent>(_onWsEnvelopeReceived);
 
     _wsSubscription = chatRepository.wsClient.messages.listen((msg) {
-      // In real protobuf parsing, unpack and trigger MessageReceivedEvent
+      if (msg is Map<String, dynamic>) {
+        add(WsEnvelopeReceivedEvent(msg));
+      }
     });
   }
 
@@ -181,108 +247,178 @@ class ChatBloc extends Bloc<ChatEvent, ChatState> {
   }
 
   Future<void> _onSendTextMessage(SendTextMessage event, Emitter<ChatState> emit) async {
-    final currentState = state;
-    final newMessage = MiighoMessageItem(
-      id: DateTime.now().millisecondsSinceEpoch.toString(),
+    final tempId = 'temp_${DateTime.now().millisecondsSinceEpoch}';
+    final optimisticMessage = MiighoMessageItem(
+      id: tempId,
       conversationId: event.conversationId,
       content: event.content,
       isMe: true,
       type: MessageBubbleType.text,
-      status: MessageDeliveryStatus.sent,
+      status: MessageDeliveryStatus.sending,
       timestamp: DateTime.now(),
     );
 
+    final currentState = state;
     if (currentState is MessagesLoaded && currentState.conversationId == event.conversationId) {
-      emit(currentState.copyWith(messages: [newMessage, ...currentState.messages]));
+      emit(currentState.copyWith(messages: [optimisticMessage, ...currentState.messages]));
     }
 
-    // Update conversation subtitle in conversation list
-    final idx = _allConversations.indexWhere((c) => c.id == event.conversationId);
-    if (idx != -1) {
-      final updated = _allConversations[idx].copyWith(
-        subtitle: event.content,
-        updatedAt: DateTime.now(),
-        isLastMessageFromMe: true,
-        lastMessageStatus: MessageDeliveryStatus.sent,
+    try {
+      final serverConfirmed = await chatRepository.sendMessage(
+        conversationId: event.conversationId,
+        content: event.content,
+        type: MessageBubbleType.text,
+        replyToId: event.replyToId,
       );
-      _allConversations[idx] = updated;
-    }
 
-    await chatRepository.sendMessage(
-      conversationId: event.conversationId,
-      content: event.content,
-      type: MessageBubbleType.text,
-    );
+      final latestState = state;
+      if (latestState is MessagesLoaded && latestState.conversationId == event.conversationId) {
+        final updatedList = latestState.messages.map((m) {
+          return m.id == tempId ? serverConfirmed : m;
+        }).toList();
+        emit(latestState.copyWith(messages: updatedList));
+      }
+
+      // Update conversation subtitle in conversation list
+      final idx = _allConversations.indexWhere((c) => c.id == event.conversationId);
+      if (idx != -1) {
+        final updated = _allConversations[idx].copyWith(
+          subtitle: event.content,
+          updatedAt: DateTime.now(),
+          isLastMessageFromMe: true,
+          lastMessageStatus: MessageDeliveryStatus.sent,
+        );
+        _allConversations[idx] = updated;
+      }
+    } catch (e) {
+      final latestState = state;
+      if (latestState is MessagesLoaded && latestState.conversationId == event.conversationId) {
+        final updatedList = latestState.messages.map((m) {
+          return m.id == tempId ? m.copyWith(status: MessageDeliveryStatus.failed) : m;
+        }).toList();
+        emit(latestState.copyWith(messages: updatedList));
+      }
+    }
   }
 
   Future<void> _onSendVoiceMessage(SendVoiceMessage event, Emitter<ChatState> emit) async {
-    final currentState = state;
-    final newMessage = MiighoMessageItem(
-      id: DateTime.now().millisecondsSinceEpoch.toString(),
+    final tempId = 'temp_${DateTime.now().millisecondsSinceEpoch}';
+    final optimisticMessage = MiighoMessageItem(
+      id: tempId,
       conversationId: event.conversationId,
       content: 'Message vocal (${event.duration.inSeconds}s)',
       isMe: true,
       type: MessageBubbleType.voice,
       mediaPath: event.audioPath,
       mediaDuration: event.duration,
-      status: MessageDeliveryStatus.sent,
+      status: MessageDeliveryStatus.sending,
       timestamp: DateTime.now(),
     );
 
+    final currentState = state;
     if (currentState is MessagesLoaded && currentState.conversationId == event.conversationId) {
-      emit(currentState.copyWith(messages: [newMessage, ...currentState.messages]));
+      emit(currentState.copyWith(messages: [optimisticMessage, ...currentState.messages]));
     }
 
-    await chatRepository.sendMessage(
-      conversationId: event.conversationId,
-      content: 'Audio',
-      type: MessageBubbleType.voice,
-      mediaPath: event.audioPath,
-    );
+    try {
+      final serverConfirmed = await chatRepository.sendMessage(
+        conversationId: event.conversationId,
+        content: 'Audio',
+        type: MessageBubbleType.voice,
+        mediaPath: event.audioPath,
+        replyToId: event.replyToId,
+        metadata: {'duration_seconds': event.duration.inSeconds},
+      );
+
+      final latestState = state;
+      if (latestState is MessagesLoaded && latestState.conversationId == event.conversationId) {
+        final updatedList = latestState.messages.map((m) {
+          return m.id == tempId ? serverConfirmed : m;
+        }).toList();
+        emit(latestState.copyWith(messages: updatedList));
+      }
+    } catch (_) {
+      final latestState = state;
+      if (latestState is MessagesLoaded && latestState.conversationId == event.conversationId) {
+        final updatedList = latestState.messages.map((m) {
+          return m.id == tempId ? m.copyWith(status: MessageDeliveryStatus.failed) : m;
+        }).toList();
+        emit(latestState.copyWith(messages: updatedList));
+      }
+    }
   }
 
   Future<void> _onSendMediaMessage(SendMediaMessage event, Emitter<ChatState> emit) async {
-    final currentState = state;
+    final tempId = 'temp_${DateTime.now().millisecondsSinceEpoch}';
     final type = event.mediaType == 'video'
         ? MessageBubbleType.video
         : (event.mediaType == 'document' ? MessageBubbleType.document : MessageBubbleType.image);
 
-    final newMessage = MiighoMessageItem(
-      id: DateTime.now().millisecondsSinceEpoch.toString(),
+    final optimisticMessage = MiighoMessageItem(
+      id: tempId,
       conversationId: event.conversationId,
       content: event.caption ?? '',
       isMe: true,
       type: type,
       mediaPath: event.filePath,
       mediaFileName: event.filePath.split('/').last,
-      status: MessageDeliveryStatus.sent,
+      status: MessageDeliveryStatus.sending,
       timestamp: DateTime.now(),
     );
 
+    final currentState = state;
     if (currentState is MessagesLoaded && currentState.conversationId == event.conversationId) {
-      emit(currentState.copyWith(messages: [newMessage, ...currentState.messages]));
+      emit(currentState.copyWith(messages: [optimisticMessage, ...currentState.messages]));
     }
 
-    await chatRepository.sendMessage(
-      conversationId: event.conversationId,
-      content: event.caption ?? '',
-      type: type,
-      mediaPath: event.filePath,
-    );
+    try {
+      final serverConfirmed = await chatRepository.sendMessage(
+        conversationId: event.conversationId,
+        content: event.caption ?? '',
+        type: type,
+        mediaPath: event.filePath,
+        replyToId: event.replyToId,
+        metadata: {'file_name': event.filePath.split('/').last},
+      );
+
+      final latestState = state;
+      if (latestState is MessagesLoaded && latestState.conversationId == event.conversationId) {
+        final updatedList = latestState.messages.map((m) {
+          return m.id == tempId ? serverConfirmed : m;
+        }).toList();
+        emit(latestState.copyWith(messages: updatedList));
+      }
+    } catch (_) {
+      final latestState = state;
+      if (latestState is MessagesLoaded && latestState.conversationId == event.conversationId) {
+        final updatedList = latestState.messages.map((m) {
+          return m.id == tempId ? m.copyWith(status: MessageDeliveryStatus.failed) : m;
+        }).toList();
+        emit(latestState.copyWith(messages: updatedList));
+      }
+    }
   }
 
-  void _onCreateConversation(CreateConversationEvent event, Emitter<ChatState> emit) {
-    final newConv = MiighoConversation(
-      id: 'conv_${DateTime.now().millisecondsSinceEpoch}',
-      title: event.title,
-      subtitle: event.initialMessage ?? 'Nouvelle discussion créée',
-      updatedAt: DateTime.now(),
-      isGroup: event.isGroup,
-      unreadCount: 0,
-      isOnline: true,
-    );
-    _allConversations.insert(0, newConv);
-    emit(ConversationsLoaded(List.from(_allConversations)));
+  Future<void> _onCreateConversation(CreateConversationEvent event, Emitter<ChatState> emit) async {
+    emit(ChatLoading());
+    try {
+      final newConv = await chatRepository.createConversation(event.recipientId);
+      _allConversations.insert(0, newConv);
+      emit(ConversationsLoaded(List.from(_allConversations), activeConversationId: newConv.id));
+    } catch (e) {
+      emit(ChatError('Erreur création conversation: $e'));
+    }
+  }
+
+  Future<void> _onCreateGroup(CreateGroupEvent event, Emitter<ChatState> emit) async {
+    emit(ChatLoading());
+    try {
+      final newGroup = await chatRepository.createGroup(event.name, event.memberIds);
+      _allConversations.insert(0, newGroup);
+      emit(ConversationsLoaded(List.from(_allConversations), activeConversationId: newGroup.id));
+    } catch (e) {
+      emit(ChatError('Erreur création groupe: $e'));
+    }
   }
 
   void _onTogglePinConversation(TogglePinConversationEvent event, Emitter<ChatState> emit) {
@@ -290,7 +426,6 @@ class ChatBloc extends Bloc<ChatEvent, ChatState> {
     if (idx != -1) {
       final item = _allConversations[idx];
       _allConversations[idx] = item.copyWith(isPinned: !item.isPinned);
-      // Sort pinned to top
       _allConversations.sort((a, b) {
         if (a.isPinned && !b.isPinned) return -1;
         if (!a.isPinned && b.isPinned) return 1;
@@ -309,7 +444,7 @@ class ChatBloc extends Bloc<ChatEvent, ChatState> {
     }
   }
 
-  void _onAddReaction(AddReactionEvent event, Emitter<ChatState> emit) {
+  Future<void> _onAddReaction(AddReactionEvent event, Emitter<ChatState> emit) async {
     final currentState = state;
     if (currentState is MessagesLoaded && currentState.conversationId == event.conversationId) {
       final updatedMessages = currentState.messages.map((m) {
@@ -331,12 +466,161 @@ class ChatBloc extends Bloc<ChatEvent, ChatState> {
       }).toList();
       emit(currentState.copyWith(messages: updatedMessages));
     }
+
+    try {
+      await chatRepository.addReaction(event.messageId, event.emoji);
+    } catch (_) {}
   }
 
-  void _onMessageReceived(MessageReceivedEvent event, Emitter<ChatState> emit) {
+  Future<void> _onRemoveReaction(RemoveReactionEvent event, Emitter<ChatState> emit) async {
     final currentState = state;
-    if (currentState is MessagesLoaded && currentState.conversationId == event.message.conversationId) {
-      emit(currentState.copyWith(messages: [event.message, ...currentState.messages]));
+    if (currentState is MessagesLoaded && currentState.conversationId == event.conversationId) {
+      final updatedMessages = currentState.messages.map((m) {
+        if (m.id == event.messageId) {
+          final existing = List<MessageReactionData>.from(m.reactions);
+          final rIdx = existing.indexWhere((r) => r.emoji == event.emoji);
+          if (rIdx != -1) {
+            if (existing[rIdx].count > 1) {
+              existing[rIdx] = MessageReactionData(
+                emoji: event.emoji,
+                count: existing[rIdx].count - 1,
+                hasReacted: false,
+              );
+            } else {
+              existing.removeAt(rIdx);
+            }
+          }
+          return m.copyWith(reactions: existing);
+        }
+        return m;
+      }).toList();
+      emit(currentState.copyWith(messages: updatedMessages));
+    }
+
+    try {
+      await chatRepository.removeReaction(event.messageId, event.emoji);
+    } catch (_) {}
+  }
+
+  Future<void> _onEditMessage(EditMessageEvent event, Emitter<ChatState> emit) async {
+    final currentState = state;
+    if (currentState is MessagesLoaded && currentState.conversationId == event.conversationId) {
+      final updatedMessages = currentState.messages.map((m) {
+        if (m.id == event.messageId) {
+          return m.copyWith(content: event.newContent, editedAt: DateTime.now());
+        }
+        return m;
+      }).toList();
+      emit(currentState.copyWith(messages: updatedMessages));
+    }
+
+    try {
+      await chatRepository.editMessage(event.messageId, event.newContent);
+    } catch (_) {}
+  }
+
+  Future<void> _onDeleteMessage(DeleteMessageEvent event, Emitter<ChatState> emit) async {
+    final currentState = state;
+    if (currentState is MessagesLoaded && currentState.conversationId == event.conversationId) {
+      final updatedMessages = currentState.messages.where((m) => m.id != event.messageId).toList();
+      emit(currentState.copyWith(messages: updatedMessages));
+    }
+
+    try {
+      await chatRepository.deleteMessage(event.messageId);
+    } catch (_) {}
+  }
+
+  Future<void> _onMarkConversationRead(MarkConversationReadEvent event, Emitter<ChatState> emit) async {
+    try {
+      await chatRepository.markRead(event.conversationId, event.messageId);
+    } catch (_) {}
+  }
+
+  void _onSendTyping(SendTypingEvent event, Emitter<ChatState> emit) {
+    chatRepository.wsClient.sendTyping(event.conversationId, event.isTyping);
+  }
+
+  Future<void> _onWsEnvelopeReceived(WsEnvelopeReceivedEvent event, Emitter<ChatState> emit) async {
+    final env = event.envelope;
+    final type = env['type'] as String?;
+    final convId = env['conversation_id'] as String?;
+    final data = env['data'];
+
+    switch (type) {
+      case 'message.sent':
+        if (data is Map<String, dynamic>) {
+          final currentUserId = await chatRepository.secureStorage.getUserId() ?? '';
+          final newMsg = MiighoMessageItem.fromJson(data, currentUserId: currentUserId);
+
+          final currentState = state;
+          if (currentState is MessagesLoaded && currentState.conversationId == convId) {
+            // Avoid duplicate if already in list
+            if (!currentState.messages.any((m) => m.id == newMsg.id)) {
+              emit(currentState.copyWith(messages: [newMsg, ...currentState.messages]));
+            }
+          }
+
+          // Update conversations list
+          final idx = _allConversations.indexWhere((c) => c.id == convId);
+          if (idx != -1) {
+            final old = _allConversations[idx];
+            final updated = old.copyWith(
+              subtitle: newMsg.content,
+              updatedAt: newMsg.timestamp,
+              isLastMessageFromMe: newMsg.isMe,
+              lastMessageStatus: newMsg.status,
+              unreadCount: (currentState is MessagesLoaded && currentState.conversationId == convId)
+                  ? 0
+                  : old.unreadCount + 1,
+            );
+            _allConversations[idx] = updated;
+          }
+        }
+        break;
+
+      case 'message.read':
+        final currentState = state;
+        if (currentState is MessagesLoaded && currentState.conversationId == convId) {
+          final updated = currentState.messages.map((m) {
+            return m.isMe ? m.copyWith(status: MessageDeliveryStatus.read) : m;
+          }).toList();
+          emit(currentState.copyWith(messages: updated));
+        }
+        break;
+
+      case 'message.updated':
+        if (data is Map<String, dynamic>) {
+          final msgId = data['id'] as String?;
+          final newContent = data['content'] as String?;
+          final currentState = state;
+          if (currentState is MessagesLoaded && currentState.conversationId == convId && msgId != null) {
+            final updated = currentState.messages.map((m) {
+              return m.id == msgId
+                  ? m.copyWith(content: newContent ?? m.content, editedAt: DateTime.now())
+                  : m;
+            }).toList();
+            emit(currentState.copyWith(messages: updated));
+          }
+        }
+        break;
+
+      case 'message.deleted':
+        final msgId = (data is Map<String, dynamic>) ? data['id'] as String? : data?.toString();
+        final currentState = state;
+        if (currentState is MessagesLoaded && currentState.conversationId == convId && msgId != null) {
+          final updated = currentState.messages.where((m) => m.id != msgId).toList();
+          emit(currentState.copyWith(messages: updated));
+        }
+        break;
+
+      case 'user.typing':
+        final currentState = state;
+        if (currentState is MessagesLoaded && currentState.conversationId == convId) {
+          final isTyping = (data is Map<String, dynamic>) ? data['is_typing'] == true : false;
+          emit(currentState.copyWith(isPeerTyping: isTyping));
+        }
+        break;
     }
   }
 
