@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/miigho/miigho/internal/common"
 	"github.com/miigho/miigho/internal/platform/encryption"
 	"github.com/miigho/miigho/internal/platform/events"
 	"github.com/stretchr/testify/assert"
@@ -206,6 +207,69 @@ func (r *MemoryChatRepository) RemoveReaction(ctx context.Context, messageID, us
 	return nil
 }
 
+func (r *MemoryChatRepository) IsMember(ctx context.Context, conversationID, userID uuid.UUID) (bool, error) {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+	members, ok := r.members[conversationID]
+	if !ok {
+		return false, nil
+	}
+	for _, m := range members {
+		if m == userID {
+			return true, nil
+		}
+	}
+	return false, nil
+}
+
+func (r *MemoryChatRepository) GetConversationMembers(ctx context.Context, conversationID uuid.UUID) ([]uuid.UUID, error) {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+	members, ok := r.members[conversationID]
+	if !ok {
+		return nil, nil
+	}
+	result := make([]uuid.UUID, len(members))
+	copy(result, members)
+	return result, nil
+}
+
+func (r *MemoryChatRepository) CreateGroupConversation(ctx context.Context, creatorID uuid.UUID, name string, memberIDs []uuid.UUID) (*Conversation, error) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+
+	conv := &Conversation{
+		ID:        uuid.New(),
+		Type:      TypeGroup,
+		Name:      &name,
+		CreatedAt: time.Now(),
+		UpdatedAt: time.Now(),
+	}
+	r.conversations[conv.ID] = conv
+	allMembers := []uuid.UUID{creatorID}
+	for _, m := range memberIDs {
+		if m != creatorID {
+			allMembers = append(allMembers, m)
+		}
+	}
+	r.members[conv.ID] = allMembers
+	return conv, nil
+}
+
+func (r *MemoryChatRepository) GetMessage(ctx context.Context, messageID uuid.UUID) (*Message, error) {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+
+	for _, msgs := range r.messages {
+		for _, m := range msgs {
+			if m.ID == messageID {
+				return m, nil
+			}
+		}
+	}
+	return nil, fmt.Errorf("message not found: %s", messageID)
+}
+
 func (r *MemoryChatRepository) MarkAsRead(ctx context.Context, conversationID, userID, messageID uuid.UUID) error {
 	r.mu.Lock()
 	defer r.mu.Unlock()
@@ -301,7 +365,7 @@ func TestChat_SendMessage_Success(t *testing.T) {
 	conv, err := env.repo.CreateDirectConversation(ctx, env.userA, env.userB)
 	require.NoError(t, err)
 
-	msg, err := env.service.SendMessage(ctx, conv.ID, env.userA, []byte("Hello!"), MsgText)
+	msg, err := env.service.SendMessage(ctx, conv.ID, env.userA, []byte("Hello!"), MsgText, nil, nil)
 	require.NoError(t, err)
 	assert.NotNil(t, msg)
 	assert.Equal(t, conv.ID, msg.ConversationID)
@@ -319,7 +383,7 @@ func TestChat_SendMessage_Encrypted(t *testing.T) {
 	require.NoError(t, err)
 
 	content := []byte("Secret message")
-	msg, err := env.service.SendMessage(ctx, conv.ID, env.userA, content, MsgText)
+	msg, err := env.service.SendMessage(ctx, conv.ID, env.userA, content, MsgText, nil, nil)
 	require.NoError(t, err)
 
 	// PassthroughEncryption returns content as-is
@@ -336,7 +400,7 @@ func TestChat_SendMessage_PublishesDomainEvent(t *testing.T) {
 	require.NoError(t, err)
 
 	initialCount := env.bus.EventCount()
-	_, err = env.service.SendMessage(ctx, conv.ID, env.userA, []byte("Hello!"), MsgText)
+	_, err = env.service.SendMessage(ctx, conv.ID, env.userA, []byte("Hello!"), MsgText, nil, nil)
 	require.NoError(t, err)
 
 	assert.Equal(t, initialCount+1, env.bus.EventCount())
@@ -354,7 +418,7 @@ func TestChat_SendMessage_AllMessageTypes(t *testing.T) {
 	types := []MessageType{MsgText, MsgImage, MsgVideo, MsgAudio, MsgVoice, MsgFile, MsgSystem}
 	for _, mt := range types {
 		t.Run(string(mt), func(t *testing.T) {
-			msg, err := env.service.SendMessage(ctx, conv.ID, env.userA, []byte("content"), mt)
+			msg, err := env.service.SendMessage(ctx, conv.ID, env.userA, []byte("content"), mt, nil, nil)
 			require.NoError(t, err)
 			assert.Equal(t, mt, msg.Type)
 		})
@@ -368,9 +432,9 @@ func TestChat_SendMessage_GeneratesUniqueIDs(t *testing.T) {
 	conv, err := env.repo.CreateDirectConversation(ctx, env.userA, env.userB)
 	require.NoError(t, err)
 
-	msg1, err := env.service.SendMessage(ctx, conv.ID, env.userA, []byte("Hello 1"), MsgText)
+	msg1, err := env.service.SendMessage(ctx, conv.ID, env.userA, []byte("Hello 1"), MsgText, nil, nil)
 	require.NoError(t, err)
-	msg2, err := env.service.SendMessage(ctx, conv.ID, env.userA, []byte("Hello 2"), MsgText)
+	msg2, err := env.service.SendMessage(ctx, conv.ID, env.userA, []byte("Hello 2"), MsgText, nil, nil)
 	require.NoError(t, err)
 
 	assert.NotEqual(t, msg1.ID, msg2.ID, "each message must have a unique ID")
@@ -381,7 +445,7 @@ func TestChat_SendMessage_InvalidConversation(t *testing.T) {
 	ctx := context.Background()
 
 	fakeConvID := uuid.New()
-	_, err := env.service.SendMessage(ctx, fakeConvID, env.userA, []byte("Hello"), MsgText)
+	_, err := env.service.SendMessage(ctx, fakeConvID, env.userA, []byte("Hello"), MsgText, nil, nil)
 	assert.Error(t, err, "should fail for non-existent conversation")
 }
 
@@ -392,8 +456,8 @@ func TestChat_SendMessage_NilContent(t *testing.T) {
 	conv, err := env.repo.CreateDirectConversation(ctx, env.userA, env.userB)
 	require.NoError(t, err)
 
-	_, err = env.service.SendMessage(ctx, conv.ID, env.userA, nil, MsgText)
-	assert.Error(t, err, "nil content should be rejected by encryption service")
+	_, err = env.service.SendMessage(ctx, conv.ID, env.userA, nil, MsgText, nil, nil)
+	assert.Error(t, err, "nil content should be rejected")
 }
 
 // ===============================================================
@@ -422,7 +486,7 @@ func TestChat_MarkRead_Success(t *testing.T) {
 	conv, err := env.repo.CreateDirectConversation(ctx, env.userA, env.userB)
 	require.NoError(t, err)
 
-	msg, err := env.service.SendMessage(ctx, conv.ID, env.userA, []byte("Read me"), MsgText)
+	msg, err := env.service.SendMessage(ctx, conv.ID, env.userA, []byte("Read me"), MsgText, nil, nil)
 	require.NoError(t, err)
 
 	err = env.service.MarkRead(ctx, conv.ID, env.userB, msg.ID)
@@ -440,7 +504,7 @@ func TestChat_MarkRead_Idempotent(t *testing.T) {
 	conv, err := env.repo.CreateDirectConversation(ctx, env.userA, env.userB)
 	require.NoError(t, err)
 
-	msg, err := env.service.SendMessage(ctx, conv.ID, env.userA, []byte("Read me"), MsgText)
+	msg, err := env.service.SendMessage(ctx, conv.ID, env.userA, []byte("Read me"), MsgText, nil, nil)
 	require.NoError(t, err)
 
 	// Mark as read twice — should not error
@@ -451,7 +515,7 @@ func TestChat_MarkRead_Idempotent(t *testing.T) {
 }
 
 // ===============================================================
-// TEST SUITE: Repository — Conversations
+// TEST SUITE: Repository — Conversations & Groups
 // ===============================================================
 
 func TestRepo_CreateDirectConversation(t *testing.T) {
@@ -462,6 +526,20 @@ func TestRepo_CreateDirectConversation(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, TypeDirect, conv.Type)
 	assert.NotEqual(t, uuid.Nil, conv.ID)
+}
+
+func TestRepo_CreateGroupConversation(t *testing.T) {
+	env := setupChatTestEnv(t)
+	ctx := context.Background()
+
+	conv, err := env.repo.CreateGroupConversation(ctx, env.userA, "Group 1", []uuid.UUID{env.userB, env.userC})
+	require.NoError(t, err)
+	assert.Equal(t, TypeGroup, conv.Type)
+	assert.Equal(t, "Group 1", *conv.Name)
+
+	members, err := env.repo.GetConversationMembers(ctx, conv.ID)
+	require.NoError(t, err)
+	assert.Len(t, members, 3)
 }
 
 func TestRepo_CreateDirectConversation_Idempotent(t *testing.T) {
@@ -758,6 +836,8 @@ func TestHub_BroadcastToUser_NoConnections(t *testing.T) {
 	hub := NewHub()
 	// Should not panic
 	hub.BroadcastToUser(uuid.New(), []byte("test"))
+	hub.BroadcastToUsers([]uuid.UUID{uuid.New()}, []byte("test"))
+	assert.False(t, hub.IsUserOnline(uuid.New()))
 }
 
 // ===============================================================
@@ -819,7 +899,7 @@ func TestChat_ConcurrentSendMessages(t *testing.T) {
 		go func(idx int) {
 			defer wg.Done()
 			content := fmt.Sprintf("Concurrent message %d", idx)
-			_, err := env.service.SendMessage(ctx, conv.ID, env.userA, []byte(content), MsgText)
+			_, err := env.service.SendMessage(ctx, conv.ID, env.userA, []byte(content), MsgText, nil, nil)
 			if err != nil {
 				errCh <- err
 			}
@@ -839,85 +919,113 @@ func TestChat_ConcurrentSendMessages(t *testing.T) {
 }
 
 // ===============================================================
-// TEST SUITE: End-to-End Flow
+// TEST SUITE: IDOR & Security Hardening (Phase 2)
 // ===============================================================
 
-func TestChat_E2E_FullConversationFlow(t *testing.T) {
+func TestChat_IDOR_AuthorizationChecks(t *testing.T) {
 	env := setupChatTestEnv(t)
 	ctx := context.Background()
 
-	// 1. Create direct conversation
-	conv, err := env.repo.CreateDirectConversation(ctx, env.userA, env.userB)
+	// User A creates conversation with User B
+	conv, err := env.service.CreateDirectConversation(ctx, env.userA, env.userB)
+	require.NoError(t, err)
+
+	// User A sends a message
+	msg, err := env.service.SendMessage(ctx, conv.ID, env.userA, []byte("Private message"), MsgText, nil, nil)
+	require.NoError(t, err)
+
+	// TEST IDOR 1: User C (not a member) cannot send a message in conv A/B
+	_, err = env.service.SendMessage(ctx, conv.ID, env.userC, []byte("Intruder"), MsgText, nil, nil)
+	assert.ErrorIs(t, err, common.ErrForbidden, "Non-member User C must be forbidden from sending messages")
+
+	// TEST IDOR 2: User C cannot mark message as read in conv A/B
+	err = env.service.MarkRead(ctx, conv.ID, env.userC, msg.ID)
+	assert.ErrorIs(t, err, common.ErrForbidden, "Non-member User C must be forbidden from marking messages as read")
+
+	// TEST IDOR 3: User C cannot add reaction in conv A/B
+	err = env.service.AddReaction(ctx, msg.ID, env.userC, "👍")
+	assert.ErrorIs(t, err, common.ErrForbidden, "Non-member User C must be forbidden from adding reactions")
+
+	// TEST IDOR 4: User B (recipient) cannot edit User A's message
+	_, err = env.service.EditMessage(ctx, msg.ID, env.userB, []byte("Tampered"))
+	assert.ErrorIs(t, err, common.ErrForbidden, "User B must not be allowed to edit User A's message")
+
+	// TEST IDOR 5: User B cannot delete User A's message
+	err = env.service.DeleteMessage(ctx, msg.ID, env.userB)
+	assert.ErrorIs(t, err, common.ErrForbidden, "User B must not be allowed to delete User A's message")
+}
+
+// ===============================================================
+// TEST SUITE: 14-Step End-to-End Integration Test (Phase 25)
+// ===============================================================
+
+func TestChat_14Step_EndToEnd_Integration(t *testing.T) {
+	env := setupChatTestEnv(t)
+	hub := NewHub()
+	env.service.SetHub(hub)
+	ctx := context.Background()
+
+	// STEP 1: User A creates conversation with User B
+	conv, err := env.service.CreateDirectConversation(ctx, env.userA, env.userB)
 	require.NoError(t, err)
 	assert.Equal(t, TypeDirect, conv.Type)
 
-	// 2. UserA sends a message
-	msg1, err := env.service.SendMessage(ctx, conv.ID, env.userA, []byte("Salut !"), MsgText)
+	// STEP 2: User A sends "Bonjour"
+	msg1, err := env.service.SendMessage(ctx, conv.ID, env.userA, []byte("Bonjour"), MsgText, nil, nil)
 	require.NoError(t, err)
+	assert.Equal(t, "Bonjour", string(msg1.Content))
 
-	// 3. UserB sends a reply
-	msg2, err := env.service.SendMessage(ctx, conv.ID, env.userB, []byte("Ça va ?"), MsgText)
+	// STEP 3: Message persists in repository
+	msgs, _, err := env.repo.GetMessages(ctx, conv.ID, "", 10)
 	require.NoError(t, err)
-
-	// 4. Verify messages are listed
-	msgs, _, err := env.repo.GetMessages(ctx, conv.ID, "", 50)
-	require.NoError(t, err)
-	assert.Len(t, msgs, 2)
-
-	// 5. UserB marks msg1 as read
-	err = env.service.MarkRead(ctx, conv.ID, env.userB, msg1.ID)
-	require.NoError(t, err)
-
-	// 6. Add reaction
-	err = env.repo.AddReaction(ctx, &MessageReaction{
-		MessageID: msg2.ID,
-		UserID:    env.userA,
-		Emoji:     "😂",
-		CreatedAt: time.Now(),
-	})
-	require.NoError(t, err)
-
-	// 7. Edit message
-	msg1.Content = []byte("Salut, comment tu vas ?")
-	err = env.repo.UpdateMessage(ctx, msg1)
-	require.NoError(t, err)
-
-	// 8. Verify edit
-	msgs, _, err = env.repo.GetMessages(ctx, conv.ID, "", 50)
-	require.NoError(t, err)
-	// Find msg1 and verify edit
-	var found bool
-	for _, m := range msgs {
-		if m.ID == msg1.ID {
-			assert.Equal(t, "Salut, comment tu vas ?", string(m.Content))
-			assert.NotNil(t, m.EditedAt)
-			found = true
-			break
-		}
-	}
-	assert.True(t, found, "edited message should be found")
-
-	// 9. Delete msg2
-	err = env.repo.DeleteMessage(ctx, msg2.ID)
-	require.NoError(t, err)
-
-	// 10. Verify only msg1 remains
-	msgs, _, err = env.repo.GetMessages(ctx, conv.ID, "", 50)
-	require.NoError(t, err)
-	assert.Len(t, msgs, 1)
+	require.Len(t, msgs, 1)
 	assert.Equal(t, msg1.ID, msgs[0].ID)
 
-	// 11. ListConversations should show this conversation for both users
-	convs, _, err := env.repo.ListConversations(ctx, env.userA, "", 20)
-	require.NoError(t, err)
-	assert.Len(t, convs, 1)
+	// STEP 4: User B receives message via domain event / hub
+	assert.Equal(t, "message.sent", env.bus.LastEvent().Topic())
 
-	convs, _, err = env.repo.ListConversations(ctx, env.userB, "", 20)
+	// STEP 5 & 6: User B opens conversation and marks message as READ
+	err = env.service.MarkRead(ctx, conv.ID, env.userB, msg1.ID)
 	require.NoError(t, err)
-	assert.Len(t, convs, 1)
+	assert.Equal(t, "message.read", env.bus.LastEvent().Topic())
 
-	// 12. Verify domain events were published
-	assert.True(t, env.bus.EventCount() >= 3, "should have at least 3 events: 2 message.sent + 1 message.read")
+	// STEP 7: User A sees READ event was dispatched
+	lastEv := env.bus.LastEvent()
+	assert.Equal(t, "message.read", lastEv.Topic())
+
+	// STEP 8: User B reacts 👍
+	err = env.service.AddReaction(ctx, msg1.ID, env.userB, "👍")
+	require.NoError(t, err)
+
+	// STEP 9: User A receives reaction event
+	assert.Equal(t, "reaction.added", env.bus.LastEvent().Topic())
+
+	// STEP 10: User A edits message
+	editedMsg, err := env.service.EditMessage(ctx, msg1.ID, env.userA, []byte("Bonjour tout le monde"))
+	require.NoError(t, err)
+	assert.Equal(t, "Bonjour tout le monde", string(editedMsg.Content))
+	assert.NotNil(t, editedMsg.EditedAt)
+
+	// STEP 11: User B sees EDITED event
+	assert.Equal(t, "message.updated", env.bus.LastEvent().Topic())
+
+	// STEP 12: User A deletes message (soft delete)
+	err = env.service.DeleteMessage(ctx, msg1.ID, env.userA)
+	require.NoError(t, err)
+
+	// STEP 13: User B sees soft-delete (message no longer returned in active list)
+	msgsAfterDelete, _, err := env.repo.GetMessages(ctx, conv.ID, "", 10)
+	require.NoError(t, err)
+	assert.Len(t, msgsAfterDelete, 0)
+	assert.Equal(t, "message.deleted", env.bus.LastEvent().Topic())
+
+	// STEP 14: User C attempts to access conversation A/B -> 403 Forbidden
+	isMember, err := env.service.IsMember(ctx, conv.ID, env.userC)
+	require.NoError(t, err)
+	assert.False(t, isMember, "User C must not be a member")
+
+	_, err = env.service.SendMessage(ctx, conv.ID, env.userC, []byte("Unauthorized"), MsgText, nil, nil)
+	assert.ErrorIs(t, err, common.ErrForbidden, "User C must be forbidden (403)")
 }
 
 func TestChat_ListConversations_ShowsLastMessage(t *testing.T) {
@@ -927,9 +1035,9 @@ func TestChat_ListConversations_ShowsLastMessage(t *testing.T) {
 	conv, err := env.repo.CreateDirectConversation(ctx, env.userA, env.userB)
 	require.NoError(t, err)
 
-	_, err = env.service.SendMessage(ctx, conv.ID, env.userA, []byte("First"), MsgText)
+	_, err = env.service.SendMessage(ctx, conv.ID, env.userA, []byte("First"), MsgText, nil, nil)
 	require.NoError(t, err)
-	_, err = env.service.SendMessage(ctx, conv.ID, env.userB, []byte("Latest"), MsgText)
+	_, err = env.service.SendMessage(ctx, conv.ID, env.userB, []byte("Latest"), MsgText, nil, nil)
 	require.NoError(t, err)
 
 	convs, _, err := env.repo.ListConversations(ctx, env.userA, "", 20)
@@ -948,7 +1056,7 @@ func TestChat_ConversationUpdatedAt_AdvancesOnMessage(t *testing.T) {
 	originalUpdatedAt := conv.UpdatedAt
 
 	time.Sleep(1 * time.Millisecond)
-	_, err = env.service.SendMessage(ctx, conv.ID, env.userA, []byte("Bump"), MsgText)
+	_, err = env.service.SendMessage(ctx, conv.ID, env.userA, []byte("Bump"), MsgText, nil, nil)
 	require.NoError(t, err)
 
 	updated, err := env.repo.GetConversation(ctx, conv.ID)
