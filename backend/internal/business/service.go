@@ -1654,3 +1654,451 @@ func (s *Service) ListSettlements(ctx context.Context, requesterUserID, business
 
 	return receipts, nil
 }
+
+// ========================
+// Phase 3A.5 — FeeEngine & Fee Service
+// ========================
+
+// FeeEngine performs deterministic, integer-only fee calculations.
+// All monetary amounts are in minor units (FCFA). Percentages use basis points (100 bps = 1.00%).
+// INVARIANT: No float, no double, no approximate arithmetic. Purely deterministic.
+type FeeEngine struct{}
+
+// Calculate computes the fee for the given gross amount using the specified FeeRule.
+// Returns a FeeCalculationResult with the full breakdown.
+// Formula: percentage_amount = (gross_amount * percentage_bps) / 10000
+//
+//	raw_fee = fixed_amount + percentage_amount
+//	Apply min/max bounds and cap at gross_amount.
+func (e *FeeEngine) Calculate(rule *FeeRule, grossAmount int64) *FeeCalculationResult {
+	result := &FeeCalculationResult{
+		FeeRuleID:    rule.ID,
+		GrossAmount:  grossAmount,
+		Currency:     rule.Currency,
+		IsRefundable: rule.IsRefundable,
+	}
+
+	// Fixed part
+	var fixedPart int64
+	if rule.FeeType == FeeTypeFixed || rule.FeeType == FeeTypeHybrid {
+		fixedPart = rule.FixedAmount
+	}
+
+	// Percentage part: integer arithmetic with basis points
+	var percentagePart int64
+	if rule.FeeType == FeeTypePercentage || rule.FeeType == FeeTypeHybrid {
+		percentagePart = (grossAmount * rule.PercentageBps) / 10000
+	}
+
+	result.FixedPart = fixedPart
+	result.PercentagePart = percentagePart
+	rawFee := fixedPart + percentagePart
+	result.RawFee = rawFee
+
+	finalFee := rawFee
+
+	// Apply minimum bound
+	if rule.MinimumFee > 0 && finalFee < rule.MinimumFee {
+		finalFee = rule.MinimumFee
+	}
+
+	// Apply maximum cap
+	if rule.MaximumFee > 0 && finalFee > rule.MaximumFee {
+		finalFee = rule.MaximumFee
+	}
+
+	// Never exceed gross amount
+	if finalFee > grossAmount {
+		finalFee = grossAmount
+	}
+
+	// Never negative
+	if finalFee < 0 {
+		finalFee = 0
+	}
+
+	result.FinalFee = finalFee
+	return result
+}
+
+var feeEngine = &FeeEngine{}
+
+// CreateFeeRule creates a new fee rule for a business after validation.
+func (s *Service) CreateFeeRule(ctx context.Context, callerID uuid.UUID, businessID uuid.UUID, req *CreateFeeRuleRequest) (*FeeRule, error) {
+	// Authorization: OWNER or ADMIN only
+	member, err := s.repo.GetMember(ctx, businessID, callerID)
+	if err != nil {
+		return nil, ErrNotBusinessMember
+	}
+	if member.Role != "OWNER" && member.Role != "ADMIN" {
+		return nil, ErrNotBusinessMember
+	}
+
+	// Validate fee type
+	feeType := FeeType(req.FeeType)
+	if feeType != FeeTypeFixed && feeType != FeeTypePercentage && feeType != FeeTypeHybrid {
+		return nil, ErrInvalidFeeRule
+	}
+
+	// Validate transaction type
+	if req.TransactionType != "merchant_payment" && req.TransactionType != "merchant_settlement" {
+		return nil, ErrInvalidFeeRule
+	}
+
+	// Validate amounts
+	if req.FixedAmount < 0 || req.PercentageBps < 0 {
+		return nil, ErrInvalidFeeRule
+	}
+	if req.PercentageBps > 10000 {
+		return nil, ErrInvalidPercentageBps
+	}
+	if req.MinimumFee < 0 || req.MaximumFee < 0 {
+		return nil, ErrInvalidFeeRule
+	}
+	if req.MaximumFee > 0 && req.MinimumFee > req.MaximumFee {
+		return nil, ErrInvalidFeeBounds
+	}
+
+	// Must have at least one non-zero fee component
+	if req.FixedAmount == 0 && req.PercentageBps == 0 {
+		return nil, ErrInvalidFeeRule
+	}
+
+	currency := req.Currency
+	if currency == "" {
+		currency = "FCFA"
+	}
+
+	now := time.Now().UTC()
+	rule := &FeeRule{
+		ID:              uuid.New(),
+		BusinessID:      &businessID,
+		TransactionType: req.TransactionType,
+		FeeType:         feeType,
+		FixedAmount:     req.FixedAmount,
+		PercentageBps:   req.PercentageBps,
+		MinimumFee:      req.MinimumFee,
+		MaximumFee:      req.MaximumFee,
+		Currency:        currency,
+		Status:          FeeRuleActive,
+		IsRefundable:    req.IsRefundable,
+		EffectiveFrom:   now,
+		EffectiveUntil:  nil,
+		CreatedAt:       now,
+		UpdatedAt:       now,
+	}
+
+	if err := s.repo.CreateFeeRule(ctx, rule); err != nil {
+		return nil, err
+	}
+	return rule, nil
+}
+
+// UpdateFeeRule deactivates or archives an existing fee rule.
+func (s *Service) UpdateFeeRule(ctx context.Context, callerID uuid.UUID, businessID uuid.UUID, ruleID uuid.UUID, req *UpdateFeeRuleRequest) error {
+	// Authorization: OWNER or ADMIN only
+	member, err := s.repo.GetMember(ctx, businessID, callerID)
+	if err != nil {
+		return ErrNotBusinessMember
+	}
+	if member.Role != "OWNER" && member.Role != "ADMIN" {
+		return ErrNotBusinessMember
+	}
+
+	// Verify the rule exists and belongs to this business
+	rule, err := s.repo.GetFeeRule(ctx, ruleID)
+	if err != nil {
+		return err
+	}
+	if rule.BusinessID == nil || *rule.BusinessID != businessID {
+		return ErrFeeRuleNotFound
+	}
+
+	newStatus := FeeRuleStatus(req.Status)
+	if newStatus != FeeRuleActive && newStatus != FeeRuleInactive && newStatus != FeeRuleArchived {
+		return ErrInvalidFeeRule
+	}
+
+	return s.repo.UpdateFeeRuleStatus(ctx, ruleID, newStatus)
+}
+
+// ListFeeRules lists all fee rules for a business.
+func (s *Service) ListFeeRules(ctx context.Context, callerID uuid.UUID, businessID uuid.UUID) ([]*FeeRule, error) {
+	// Authorization: OWNER, ADMIN, or MANAGER
+	member, err := s.repo.GetMember(ctx, businessID, callerID)
+	if err != nil {
+		return nil, ErrNotBusinessMember
+	}
+	if member.Role != "OWNER" && member.Role != "ADMIN" && member.Role != "MANAGER" {
+		return nil, ErrNotBusinessMember
+	}
+	return s.repo.ListFeeRules(ctx, businessID)
+}
+
+// CalculateFee simulates fee calculation without persisting anything.
+func (s *Service) CalculateFee(ctx context.Context, callerID uuid.UUID, businessID uuid.UUID, req *CalculateFeeRequest) (*FeeCalculationResult, error) {
+	// Authorization: OWNER, ADMIN, or MANAGER
+	member, err := s.repo.GetMember(ctx, businessID, callerID)
+	if err != nil {
+		return nil, ErrNotBusinessMember
+	}
+	if member.Role != "OWNER" && member.Role != "ADMIN" && member.Role != "MANAGER" {
+		return nil, ErrNotBusinessMember
+	}
+
+	if req.GrossAmount <= 0 {
+		return nil, ledger.ErrInvalidAmount
+	}
+
+	currency := req.Currency
+	if currency == "" {
+		currency = "FCFA"
+	}
+
+	rule, err := s.repo.GetActiveFeeRule(ctx, businessID, req.TransactionType, currency)
+	if err != nil {
+		return nil, err
+	}
+
+	return feeEngine.Calculate(rule, req.GrossAmount), nil
+}
+
+// CollectFeeOnPayment collects a commission on a succeeded merchant payment.
+// Creates a FeeTransaction and posts a balanced double-entry journal entry.
+// Idempotent: a second call with the same idempotency_key returns the existing FeeTransaction.
+func (s *Service) CollectFeeOnPayment(ctx context.Context, businessID uuid.UUID, paymentIntentID uuid.UUID, currency string, grossAmount int64, idempotencyKey string) (*FeeTransaction, error) {
+	// Check idempotency first
+	if idempotencyKey != "" {
+		existing, err := s.repo.GetFeeTransactionByIdempotencyKey(ctx, idempotencyKey)
+		if err == nil {
+			// Already collected — idempotent return
+			return existing, nil
+		}
+	}
+
+	// Check if a fee was already collected for this source transaction (unique constraint)
+	if existing, err := s.repo.GetFeeTransactionBySource(ctx, paymentIntentID, "merchant_payment"); err == nil {
+		return existing, nil
+	}
+
+	// Find the active fee rule
+	rule, err := s.repo.GetActiveFeeRule(ctx, businessID, "merchant_payment", currency)
+	if err != nil {
+		// No active fee rule — no fee to collect (this is not an error; the system operates with 0 fees when no rule exists)
+		return nil, ErrFeeRuleNotFound
+	}
+
+	// Calculate fee deterministically
+	calc := feeEngine.Calculate(rule, grossAmount)
+	if calc.FinalFee <= 0 {
+		// Zero fee — nothing to collect
+		return nil, nil
+	}
+
+	// Get the business account's Ledger Account
+	bizAccount, err := s.repo.GetBusinessAccount(ctx, businessID)
+	if err != nil {
+		return nil, err
+	}
+
+	// Get the Platform Fee Revenue Account
+	feeRevenueAcc, err := s.ledgerRepo.GetSystemAccount(ctx, "Platform Fee Account", currency, ledger.Revenue)
+	if err != nil {
+		return nil, err
+	}
+
+	// Post double-entry journal entry: Business Asset CR, Platform Fee Revenue DR
+	ledgerIdempKey := fmt.Sprintf("FEE-COLLECT-%s", idempotencyKey)
+	entry := &ledger.JournalEntry{
+		ID:              uuid.New(),
+		TransactionType: ledger.Fee,
+		ReferenceID:     fmt.Sprintf("FEE-PAYMENT-%s", paymentIntentID.String()),
+		Description:     fmt.Sprintf("Commission MÏÏghO sur paiement marchand %s (%d %s)", paymentIntentID.String()[:8], calc.FinalFee, currency),
+		CreatedAt:       time.Now().UTC(),
+	}
+
+	postings := []*ledger.LedgerPosting{
+		{
+			ID:             uuid.New(),
+			JournalEntryID: entry.ID,
+			AccountID:      bizAccount.LedgerAccountID,
+			Amount:         calc.FinalFee,
+			IsCredit:       true, // Credit Business Asset (decreases merchant balance)
+			CreatedAt:      entry.CreatedAt,
+		},
+		{
+			ID:             uuid.New(),
+			JournalEntryID: entry.ID,
+			AccountID:      feeRevenueAcc.ID,
+			Amount:         calc.FinalFee,
+			IsCredit:       false, // Debit Platform Fee Revenue (increases platform revenue — revenue is normally credit-balance, so debit increases it in the natural direction for this convention)
+			CreatedAt:      entry.CreatedAt,
+		},
+	}
+
+	if err := s.ledgerRepo.PostJournalEntry(ctx, entry, postings, ledgerIdempKey); err != nil {
+		// If idempotency conflict on ledger side, check if fee tx already exists
+		if idempotencyKey != "" {
+			if existing, findErr := s.repo.GetFeeTransactionByIdempotencyKey(ctx, idempotencyKey); findErr == nil {
+				return existing, nil
+			}
+		}
+		return nil, err
+	}
+
+	now := time.Now().UTC()
+	feeTx := &FeeTransaction{
+		ID:                    uuid.New(),
+		BusinessID:            businessID,
+		FeeRuleID:             &rule.ID,
+		SourceTransactionType: "merchant_payment",
+		SourceTransactionID:   paymentIntentID,
+		GrossAmount:           grossAmount,
+		FeeAmount:             calc.FinalFee,
+		Currency:              currency,
+		Status:                FeeStatusCollected,
+		IsRefundable:          rule.IsRefundable,
+		RefundedFeeAmount:     0,
+		IdempotencyKey:        idempotencyKey,
+		JournalEntryID:        &entry.ID,
+		CreatedAt:             now,
+		CollectedAt:           &now,
+	}
+
+	if err := s.repo.CreateFeeTransaction(ctx, feeTx); err != nil {
+		// If duplicate source transaction, return existing
+		if errors.Is(err, ErrDuplicateFeeTransaction) || errors.Is(err, ErrFeeAlreadyCollected) {
+			if existing, findErr := s.repo.GetFeeTransactionBySource(ctx, paymentIntentID, "merchant_payment"); findErr == nil {
+				return existing, nil
+			}
+		}
+		return nil, err
+	}
+
+	return feeTx, nil
+}
+
+// RefundFeeForPayment refunds a proportional amount of the collected fee when a merchant payment is refunded.
+// Only applies if the original fee rule had is_refundable = true.
+// Formula: refund_fee_amount = (refund_amount * original_fee_amount) / original_gross_amount
+// Posts a reversal double-entry journal entry.
+func (s *Service) RefundFeeForPayment(ctx context.Context, businessID uuid.UUID, paymentIntentID uuid.UUID, refundAmount int64, currency string, refundIdempotencyKey string) (*FeeTransaction, error) {
+	// Look up the original fee transaction for this payment
+	feeTx, err := s.repo.GetFeeTransactionBySource(ctx, paymentIntentID, "merchant_payment")
+	if err != nil {
+		// No fee was collected — nothing to refund
+		return nil, nil
+	}
+
+	if !feeTx.IsRefundable {
+		// Non-refundable fee — no reversal
+		return feeTx, nil
+	}
+
+	if feeTx.FeeAmount <= 0 || feeTx.GrossAmount <= 0 {
+		return feeTx, nil
+	}
+
+	// Calculate proportional fee refund: (refundAmount * feeAmount) / grossAmount
+	feeRefundAmount := (refundAmount * feeTx.FeeAmount) / feeTx.GrossAmount
+	if feeRefundAmount <= 0 {
+		return feeTx, nil
+	}
+
+	// Don't exceed the remaining refundable amount
+	maxRefundable := feeTx.FeeAmount - feeTx.RefundedFeeAmount
+	if feeRefundAmount > maxRefundable {
+		feeRefundAmount = maxRefundable
+	}
+	if feeRefundAmount <= 0 {
+		return feeTx, nil
+	}
+
+	// Get the business account's Ledger Account
+	bizAccount, err := s.repo.GetBusinessAccount(ctx, businessID)
+	if err != nil {
+		return nil, err
+	}
+
+	// Get the Platform Fee Revenue Account
+	feeRevenueAcc, err := s.ledgerRepo.GetSystemAccount(ctx, "Platform Fee Account", currency, ledger.Revenue)
+	if err != nil {
+		return nil, err
+	}
+
+	// Post double-entry reversal: Business Asset DR, Platform Fee Revenue CR
+	ledgerIdempKey := fmt.Sprintf("FEE-REFUND-%s", refundIdempotencyKey)
+	entry := &ledger.JournalEntry{
+		ID:              uuid.New(),
+		TransactionType: ledger.Fee,
+		ReferenceID:     fmt.Sprintf("FEE-REFUND-%s", paymentIntentID.String()),
+		Description:     fmt.Sprintf("Remboursement commission MÏÏghO sur paiement %s (%d %s)", paymentIntentID.String()[:8], feeRefundAmount, currency),
+		CreatedAt:       time.Now().UTC(),
+	}
+
+	postings := []*ledger.LedgerPosting{
+		{
+			ID:             uuid.New(),
+			JournalEntryID: entry.ID,
+			AccountID:      bizAccount.LedgerAccountID,
+			Amount:         feeRefundAmount,
+			IsCredit:       false, // Debit Business Asset (restores merchant balance)
+			CreatedAt:      entry.CreatedAt,
+		},
+		{
+			ID:             uuid.New(),
+			JournalEntryID: entry.ID,
+			AccountID:      feeRevenueAcc.ID,
+			Amount:         feeRefundAmount,
+			IsCredit:       true, // Credit Platform Fee Revenue (decreases platform revenue)
+			CreatedAt:      entry.CreatedAt,
+		},
+	}
+
+	if err := s.ledgerRepo.PostJournalEntry(ctx, entry, postings, ledgerIdempKey); err != nil {
+		return nil, err
+	}
+
+	// Update the fee transaction status
+	newRefundedTotal := feeTx.RefundedFeeAmount + feeRefundAmount
+	newStatus := FeeStatusRefunded
+	if newRefundedTotal < feeTx.FeeAmount {
+		newStatus = FeeStatusCollected // partially refunded, still collected
+	}
+	if err := s.repo.UpdateFeeTransactionStatus(ctx, feeTx.ID, newStatus, newRefundedTotal, &entry.ID); err != nil {
+		return nil, err
+	}
+
+	// Return updated fee transaction
+	return s.repo.GetFeeTransaction(ctx, feeTx.ID)
+}
+
+// GetFeeSummary returns the derived fee summary for a business.
+func (s *Service) GetFeeSummary(ctx context.Context, callerID uuid.UUID, businessID uuid.UUID, currency string) (*FeeSummary, error) {
+	// Authorization: OWNER, ADMIN, or MANAGER
+	member, err := s.repo.GetMember(ctx, businessID, callerID)
+	if err != nil {
+		return nil, ErrNotBusinessMember
+	}
+	if member.Role != "OWNER" && member.Role != "ADMIN" && member.Role != "MANAGER" {
+		return nil, ErrNotBusinessMember
+	}
+
+	if currency == "" {
+		currency = "FCFA"
+	}
+	return s.repo.GetFeeSummary(ctx, businessID, currency)
+}
+
+// ListFeeTransactions lists all fee transactions for a business.
+func (s *Service) ListFeeTransactions(ctx context.Context, callerID uuid.UUID, businessID uuid.UUID) ([]*FeeTransaction, error) {
+	// Authorization: OWNER, ADMIN, or MANAGER
+	member, err := s.repo.GetMember(ctx, businessID, callerID)
+	if err != nil {
+		return nil, ErrNotBusinessMember
+	}
+	if member.Role != "OWNER" && member.Role != "ADMIN" && member.Role != "MANAGER" {
+		return nil, ErrNotBusinessMember
+	}
+	return s.repo.ListFeeTransactions(ctx, businessID)
+}

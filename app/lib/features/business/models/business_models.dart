@@ -625,5 +625,198 @@ class SettlementReceiptModel {
   }
 }
 
+// ========================
+// Phase 3A.5 — Merchant Commissions & Fees Models
+// ========================
+
+/// Modèle d'une règle tarifaire de commission marchand
+class FeeRuleModel {
+  final String id;
+  final String? businessId;
+  final String transactionType;
+  final String feeType; // FIXED, PERCENTAGE, HYBRID
+  final int fixedAmount;
+  final int percentageBps;
+  final int minimumFee;
+  final int maximumFee;
+  final String currency;
+  final String status; // ACTIVE, INACTIVE, ARCHIVED
+  final bool isRefundable;
+  final DateTime effectiveFrom;
+  final DateTime? effectiveUntil;
+  final DateTime createdAt;
+  final bool isSandbox;
+
+  FeeRuleModel({
+    required this.id,
+    this.businessId,
+    required this.transactionType,
+    required this.feeType,
+    required this.fixedAmount,
+    required this.percentageBps,
+    required this.minimumFee,
+    required this.maximumFee,
+    required this.currency,
+    required this.status,
+    required this.isRefundable,
+    required this.effectiveFrom,
+    this.effectiveUntil,
+    required this.createdAt,
+    this.isSandbox = true,
+  });
+
+  factory FeeRuleModel.fromJson(Map<String, dynamic> json) {
+    return FeeRuleModel(
+      id: json['id'] ?? '',
+      businessId: json['business_id'],
+      transactionType: json['transaction_type'] ?? 'merchant_payment',
+      feeType: json['fee_type'] ?? 'FIXED',
+      fixedAmount: (json['fixed_amount'] as num?)?.toInt() ?? 0,
+      percentageBps: (json['percentage_bps'] as num?)?.toInt() ?? 0,
+      minimumFee: (json['minimum_fee'] as num?)?.toInt() ?? 0,
+      maximumFee: (json['maximum_fee'] as num?)?.toInt() ?? 0,
+      currency: json['currency'] ?? 'FCFA',
+      status: json['status'] ?? 'ACTIVE',
+      isRefundable: json['is_refundable'] ?? false,
+      effectiveFrom: json['effective_from'] != null ? DateTime.parse(json['effective_from']) : DateTime.now(),
+      effectiveUntil: json['effective_until'] != null ? DateTime.parse(json['effective_until']) : null,
+      createdAt: json['created_at'] != null ? DateTime.parse(json['created_at']) : DateTime.now(),
+      isSandbox: json['is_sandbox'] ?? true,
+    );
+  }
+}
+
+/// Modèle d'une commission perçue sur une transaction
+class FeeTransactionModel {
+  final String id;
+  final String businessId;
+  final String? feeRuleId;
+  final String sourceTransactionType;
+  final String sourceTransactionId;
+  final int grossAmount;
+  final int feeAmount;
+  final String currency;
+  final String status; // PENDING, COLLECTED, REFUNDED, WAIVED, FAILED
+  final bool isRefundable;
+  final int refundedFeeAmount;
+  final String? idempotencyKey;
+  final String? journalEntryId;
+  final DateTime createdAt;
+  final DateTime? collectedAt;
+  final bool isSandbox;
+
+  FeeTransactionModel({
+    required this.id,
+    required this.businessId,
+    this.feeRuleId,
+    required this.sourceTransactionType,
+    required this.sourceTransactionId,
+    required this.grossAmount,
+    required this.feeAmount,
+    required this.currency,
+    required this.status,
+    required this.isRefundable,
+    required this.refundedFeeAmount,
+    this.idempotencyKey,
+    this.journalEntryId,
+    required this.createdAt,
+    this.collectedAt,
+    this.isSandbox = true,
+  });
+
+  factory FeeTransactionModel.fromJson(Map<String, dynamic> json) {
+    return FeeTransactionModel(
+      id: json['id'] ?? '',
+      businessId: json['business_id'] ?? '',
+      feeRuleId: json['fee_rule_id'],
+      sourceTransactionType: json['source_transaction_type'] ?? 'merchant_payment',
+      sourceTransactionId: json['source_transaction_id'] ?? '',
+      grossAmount: (json['gross_amount'] as num?)?.toInt() ?? 0,
+      feeAmount: (json['fee_amount'] as num?)?.toInt() ?? 0,
+      currency: json['currency'] ?? 'FCFA',
+      status: json['status'] ?? 'COLLECTED',
+      isRefundable: json['is_refundable'] ?? false,
+      refundedFeeAmount: (json['refunded_fee_amount'] as num?)?.toInt() ?? 0,
+      idempotencyKey: json['idempotency_key'],
+      journalEntryId: json['journal_entry_id'],
+      createdAt: json['created_at'] != null ? DateTime.parse(json['created_at']) : DateTime.now(),
+      collectedAt: json['collected_at'] != null ? DateTime.parse(json['collected_at']) : null,
+      isSandbox: json['is_sandbox'] ?? true,
+    );
+  }
+}
+
+/// Résultat simulé de calcul de commission
+class FeeCalculationResultModel {
+  final String feeRuleId;
+  final int grossAmount;
+  final int fixedPart;
+  final int percentagePart;
+  final int rawFee;
+  final int finalFee;
+  final String currency;
+  final bool isRefundable;
+  final bool isSandbox;
+
+  FeeCalculationResultModel({
+    required this.feeRuleId,
+    required this.grossAmount,
+    required this.fixedPart,
+    required this.percentagePart,
+    required this.rawFee,
+    required this.finalFee,
+    required this.currency,
+    required this.isRefundable,
+    this.isSandbox = true,
+  });
+
+  factory FeeCalculationResultModel.fromJson(Map<String, dynamic> json) {
+    return FeeCalculationResultModel(
+      feeRuleId: json['fee_rule_id'] ?? '',
+      grossAmount: (json['gross_amount'] as num?)?.toInt() ?? 0,
+      fixedPart: (json['fixed_part'] as num?)?.toInt() ?? 0,
+      percentagePart: (json['percentage_part'] as num?)?.toInt() ?? 0,
+      rawFee: (json['raw_fee'] as num?)?.toInt() ?? 0,
+      finalFee: (json['final_fee'] as num?)?.toInt() ?? 0,
+      currency: json['currency'] ?? 'FCFA',
+      isRefundable: json['is_refundable'] ?? false,
+      isSandbox: json['is_sandbox'] ?? true,
+    );
+  }
+}
+
+/// Synthèse financière dérivée des commissions
+class FeeSummaryModel {
+  final String businessId;
+  final String currency;
+  final int totalFeesCollected;
+  final int totalFeesRefunded;
+  final int netFeeRevenue;
+  final int transactionCount;
+  final bool isSandbox;
+
+  FeeSummaryModel({
+    required this.businessId,
+    required this.currency,
+    required this.totalFeesCollected,
+    required this.totalFeesRefunded,
+    required this.netFeeRevenue,
+    required this.transactionCount,
+    this.isSandbox = true,
+  });
+
+  factory FeeSummaryModel.fromJson(Map<String, dynamic> json) {
+    return FeeSummaryModel(
+      businessId: json['business_id'] ?? '',
+      currency: json['currency'] ?? 'FCFA',
+      totalFeesCollected: (json['total_fees_collected'] as num?)?.toInt() ?? 0,
+      totalFeesRefunded: (json['total_fees_refunded'] as num?)?.toInt() ?? 0,
+      netFeeRevenue: (json['net_fee_revenue'] as num?)?.toInt() ?? 0,
+      transactionCount: (json['transaction_count'] as num?)?.toInt() ?? 0,
+      isSandbox: json['is_sandbox'] ?? true,
+    );
+  }
+}
+
 
 

@@ -43,6 +43,16 @@ var (
 	ErrSettlementAlreadyProcessed    = errors.New("settlement has already been processed")
 	ErrInvalidSettlementAmount       = errors.New("settlement amount must be strictly greater than zero")
 	ErrSettlementNotPending          = errors.New("settlement must be in PENDING status to be processed")
+	ErrFeeRuleNotFound               = errors.New("fee rule not found")
+	ErrInvalidFeeRule                = errors.New("invalid fee rule parameters")
+	ErrInvalidPercentageBps          = errors.New("percentage basis points must be between 0 and 10000 (0% to 100%)")
+	ErrInvalidFeeBounds              = errors.New("minimum fee cannot be strictly greater than maximum fee when maximum fee is set")
+	ErrFeeTransactionNotFound        = errors.New("fee transaction not found")
+	ErrFeeAlreadyCollected           = errors.New("fee has already been collected for this source transaction")
+	ErrDuplicateFeeTransaction       = errors.New("duplicate fee transaction on the same source transaction")
+	ErrFeeCurrencyMismatch           = errors.New("fee currency does not match transaction currency")
+	ErrFeeRuleInactive               = errors.New("fee rule is inactive or expired")
+	ErrNotBusinessMember             = ErrUnauthorizedAccess
 )
 
 type RefundStatus string
@@ -387,4 +397,126 @@ type EligibleSettlementCalculation struct {
 	AlreadySettled int64     `json:"already_settled"`
 	NetSettleable  int64     `json:"net_settleable"`
 	EligibleCount  int       `json:"eligible_count"`
+}
+
+// ========================
+// Phase 3A.5 — Merchant Commissions & Fees
+// ========================
+
+// FeeType defines the fee calculation strategy.
+type FeeType string
+
+const (
+	FeeTypeFixed      FeeType = "FIXED"
+	FeeTypePercentage FeeType = "PERCENTAGE"
+	FeeTypeHybrid     FeeType = "HYBRID"
+)
+
+// FeeRuleStatus defines the lifecycle status of a fee rule.
+type FeeRuleStatus string
+
+const (
+	FeeRuleActive   FeeRuleStatus = "ACTIVE"
+	FeeRuleInactive FeeRuleStatus = "INACTIVE"
+	FeeRuleArchived FeeRuleStatus = "ARCHIVED"
+)
+
+// FeeTransactionStatus defines the lifecycle status of a fee transaction.
+type FeeTransactionStatus string
+
+const (
+	FeeStatusPending   FeeTransactionStatus = "PENDING"
+	FeeStatusCollected FeeTransactionStatus = "COLLECTED"
+	FeeStatusRefunded  FeeTransactionStatus = "REFUNDED"
+	FeeStatusWaived    FeeTransactionStatus = "WAIVED"
+	FeeStatusFailed    FeeTransactionStatus = "FAILED"
+)
+
+// FeeRule represents a tariff rule for merchant commissions.
+// All monetary amounts are in minor units (FCFA). Percentages are in basis points (100 bps = 1%).
+// Once a fee_transaction is created with a snapshot of these parameters, changes to the rule
+// do NOT retroactively alter historical fee_transactions.
+type FeeRule struct {
+	ID              uuid.UUID     `json:"id"`
+	BusinessID      *uuid.UUID    `json:"business_id,omitempty"` // nil = global platform default
+	TransactionType string        `json:"transaction_type"`      // e.g. "merchant_payment", "merchant_settlement"
+	FeeType         FeeType       `json:"fee_type"`
+	FixedAmount     int64         `json:"fixed_amount"`   // minor units (FCFA)
+	PercentageBps   int64         `json:"percentage_bps"` // basis points (150 = 1.50%)
+	MinimumFee      int64         `json:"minimum_fee"`    // floor (0 = none)
+	MaximumFee      int64         `json:"maximum_fee"`    // cap (0 = none)
+	Currency        string        `json:"currency"`
+	Status          FeeRuleStatus `json:"status"`
+	IsRefundable    bool          `json:"is_refundable"`
+	EffectiveFrom   time.Time     `json:"effective_from"`
+	EffectiveUntil  *time.Time    `json:"effective_until,omitempty"`
+	CreatedAt       time.Time     `json:"created_at"`
+	UpdatedAt       time.Time     `json:"updated_at"`
+}
+
+// FeeTransaction represents a commission collected (or refunded) on a specific source transaction.
+// Immutable once COLLECTED: the fee_rule snapshot (fee_rule_id, gross_amount, fee_amount) is frozen.
+type FeeTransaction struct {
+	ID                    uuid.UUID            `json:"id"`
+	BusinessID            uuid.UUID            `json:"business_id"`
+	FeeRuleID             *uuid.UUID           `json:"fee_rule_id,omitempty"`
+	SourceTransactionType string               `json:"source_transaction_type"`
+	SourceTransactionID   uuid.UUID            `json:"source_transaction_id"`
+	GrossAmount           int64                `json:"gross_amount"`
+	FeeAmount             int64                `json:"fee_amount"`
+	Currency              string               `json:"currency"`
+	Status                FeeTransactionStatus `json:"status"`
+	IsRefundable          bool                 `json:"is_refundable"`
+	RefundedFeeAmount     int64                `json:"refunded_fee_amount"`
+	IdempotencyKey        string               `json:"idempotency_key,omitempty"`
+	JournalEntryID        *uuid.UUID           `json:"journal_entry_id,omitempty"`
+	CreatedAt             time.Time            `json:"created_at"`
+	CollectedAt           *time.Time           `json:"collected_at,omitempty"`
+}
+
+// FeeCalculationResult is the deterministic output of the FeeEngine for a given gross_amount and FeeRule.
+type FeeCalculationResult struct {
+	FeeRuleID      uuid.UUID `json:"fee_rule_id"`
+	GrossAmount    int64     `json:"gross_amount"`
+	FixedPart      int64     `json:"fixed_part"`
+	PercentagePart int64     `json:"percentage_part"`
+	RawFee         int64     `json:"raw_fee"`
+	FinalFee       int64     `json:"final_fee"` // after min/max/cap
+	Currency       string    `json:"currency"`
+	IsRefundable   bool      `json:"is_refundable"`
+}
+
+// FeeSummary is a derived, read-only summary of all fee activity for a business.
+type FeeSummary struct {
+	BusinessID         uuid.UUID `json:"business_id"`
+	Currency           string    `json:"currency"`
+	TotalFeesCollected int64     `json:"total_fees_collected"`
+	TotalFeesRefunded  int64     `json:"total_fees_refunded"`
+	NetFeeRevenue      int64     `json:"net_fee_revenue"`
+	TransactionCount   int       `json:"transaction_count"`
+	IsSandbox          bool      `json:"is_sandbox"`
+}
+
+// CreateFeeRuleRequest is the DTO for creating a new fee rule.
+type CreateFeeRuleRequest struct {
+	TransactionType string `json:"transaction_type"`
+	FeeType         string `json:"fee_type"`
+	FixedAmount     int64  `json:"fixed_amount"`
+	PercentageBps   int64  `json:"percentage_bps"`
+	MinimumFee      int64  `json:"minimum_fee"`
+	MaximumFee      int64  `json:"maximum_fee"`
+	Currency        string `json:"currency"`
+	IsRefundable    bool   `json:"is_refundable"`
+}
+
+// UpdateFeeRuleRequest is the DTO for updating (deactivating/archiving) a fee rule.
+type UpdateFeeRuleRequest struct {
+	Status string `json:"status"` // ACTIVE, INACTIVE, ARCHIVED
+}
+
+// CalculateFeeRequest is the DTO for simulating a fee calculation.
+type CalculateFeeRequest struct {
+	TransactionType string `json:"transaction_type"`
+	GrossAmount     int64  `json:"gross_amount"`
+	Currency        string `json:"currency"`
 }

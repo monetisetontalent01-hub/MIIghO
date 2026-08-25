@@ -48,6 +48,14 @@ func (h *Handler) RegisterRoutes(g *echo.Group, authMiddleware echo.MiddlewareFu
 	biz.GET("/:id/settlements/:settlementId", h.handleGetSettlement)
 	biz.POST("/:id/settlements/:settlementId/process", h.handleProcessSettlement)
 
+	// Merchant Fees (Phase 3A.5)
+	biz.GET("/:id/fees/rules", h.handleListFeeRules)
+	biz.POST("/:id/fees/rules", h.handleCreateFeeRule)
+	biz.PATCH("/:id/fees/rules/:ruleId", h.handleUpdateFeeRule)
+	biz.GET("/:id/fees/transactions", h.handleListFeeTransactions)
+	biz.GET("/:id/fees/summary", h.handleGetFeeSummary)
+	biz.POST("/:id/fees/calculate", h.handleCalculateFee)
+
 	// Merchant QR Codes
 	biz.POST("/:id/merchant/qr", h.handleCreateMerchantQR)
 	biz.GET("/:id/merchant/qr", h.handleGetMerchantQRs)
@@ -798,4 +806,166 @@ func (h *Handler) handleListSettlements(c echo.Context) error {
 	}
 
 	return common.SuccessResponse(c, settlements)
+}
+
+// ========================
+// Phase 3A.5 — Fee Handlers
+// ========================
+
+func (h *Handler) handleCreateFeeRule(c echo.Context) error {
+	userID, err := h.getUserID(c)
+	if err != nil {
+		return common.ErrUnauthorized
+	}
+
+	businessID, err := uuid.Parse(c.Param("id"))
+	if err != nil {
+		return echo.NewHTTPError(http.StatusBadRequest, "Invalid Business ID")
+	}
+
+	var req CreateFeeRuleRequest
+	if err := c.Bind(&req); err != nil {
+		return echo.NewHTTPError(http.StatusBadRequest, "Invalid request body")
+	}
+
+	rule, err := h.service.CreateFeeRule(c.Request().Context(), userID, businessID, &req)
+	if err != nil {
+		if errors.Is(err, ErrNotBusinessMember) || errors.Is(err, ErrUnauthorizedAccess) || errors.Is(err, ErrInsufficientPermission) {
+			return echo.NewHTTPError(http.StatusForbidden, err.Error())
+		}
+		return echo.NewHTTPError(http.StatusBadRequest, err.Error())
+	}
+
+	return common.SuccessResponse(c, rule)
+}
+
+func (h *Handler) handleUpdateFeeRule(c echo.Context) error {
+	userID, err := h.getUserID(c)
+	if err != nil {
+		return common.ErrUnauthorized
+	}
+
+	businessID, err := uuid.Parse(c.Param("id"))
+	if err != nil {
+		return echo.NewHTTPError(http.StatusBadRequest, "Invalid Business ID")
+	}
+
+	ruleID, err := uuid.Parse(c.Param("ruleId"))
+	if err != nil {
+		return echo.NewHTTPError(http.StatusBadRequest, "Invalid Fee Rule ID")
+	}
+
+	var req UpdateFeeRuleRequest
+	if err := c.Bind(&req); err != nil {
+		return echo.NewHTTPError(http.StatusBadRequest, "Invalid request body")
+	}
+
+	if err := h.service.UpdateFeeRule(c.Request().Context(), userID, businessID, ruleID, &req); err != nil {
+		if errors.Is(err, ErrFeeRuleNotFound) {
+			return common.ErrNotFound
+		}
+		if errors.Is(err, ErrNotBusinessMember) || errors.Is(err, ErrUnauthorizedAccess) || errors.Is(err, ErrInsufficientPermission) {
+			return echo.NewHTTPError(http.StatusForbidden, err.Error())
+		}
+		return echo.NewHTTPError(http.StatusBadRequest, err.Error())
+	}
+
+	return common.SuccessResponse(c, map[string]string{"status": "updated"})
+}
+
+func (h *Handler) handleListFeeRules(c echo.Context) error {
+	userID, err := h.getUserID(c)
+	if err != nil {
+		return common.ErrUnauthorized
+	}
+
+	businessID, err := uuid.Parse(c.Param("id"))
+	if err != nil {
+		return echo.NewHTTPError(http.StatusBadRequest, "Invalid Business ID")
+	}
+
+	rules, err := h.service.ListFeeRules(c.Request().Context(), userID, businessID)
+	if err != nil {
+		if errors.Is(err, ErrNotBusinessMember) || errors.Is(err, ErrUnauthorizedAccess) || errors.Is(err, ErrInsufficientPermission) {
+			return echo.NewHTTPError(http.StatusForbidden, err.Error())
+		}
+		return echo.NewHTTPError(http.StatusBadRequest, err.Error())
+	}
+
+	return common.SuccessResponse(c, rules)
+}
+
+func (h *Handler) handleCalculateFee(c echo.Context) error {
+	userID, err := h.getUserID(c)
+	if err != nil {
+		return common.ErrUnauthorized
+	}
+
+	businessID, err := uuid.Parse(c.Param("id"))
+	if err != nil {
+		return echo.NewHTTPError(http.StatusBadRequest, "Invalid Business ID")
+	}
+
+	var req CalculateFeeRequest
+	if err := c.Bind(&req); err != nil {
+		return echo.NewHTTPError(http.StatusBadRequest, "Invalid request body")
+	}
+
+	result, err := h.service.CalculateFee(c.Request().Context(), userID, businessID, &req)
+	if err != nil {
+		if errors.Is(err, ErrFeeRuleNotFound) {
+			return common.ErrNotFound
+		}
+		if errors.Is(err, ErrNotBusinessMember) || errors.Is(err, ErrUnauthorizedAccess) || errors.Is(err, ErrInsufficientPermission) {
+			return echo.NewHTTPError(http.StatusForbidden, err.Error())
+		}
+		return echo.NewHTTPError(http.StatusBadRequest, err.Error())
+	}
+
+	return common.SuccessResponse(c, result)
+}
+
+func (h *Handler) handleGetFeeSummary(c echo.Context) error {
+	userID, err := h.getUserID(c)
+	if err != nil {
+		return common.ErrUnauthorized
+	}
+
+	businessID, err := uuid.Parse(c.Param("id"))
+	if err != nil {
+		return echo.NewHTTPError(http.StatusBadRequest, "Invalid Business ID")
+	}
+
+	currency := c.QueryParam("currency")
+	summary, err := h.service.GetFeeSummary(c.Request().Context(), userID, businessID, currency)
+	if err != nil {
+		if errors.Is(err, ErrNotBusinessMember) || errors.Is(err, ErrUnauthorizedAccess) || errors.Is(err, ErrInsufficientPermission) {
+			return echo.NewHTTPError(http.StatusForbidden, err.Error())
+		}
+		return echo.NewHTTPError(http.StatusBadRequest, err.Error())
+	}
+
+	return common.SuccessResponse(c, summary)
+}
+
+func (h *Handler) handleListFeeTransactions(c echo.Context) error {
+	userID, err := h.getUserID(c)
+	if err != nil {
+		return common.ErrUnauthorized
+	}
+
+	businessID, err := uuid.Parse(c.Param("id"))
+	if err != nil {
+		return echo.NewHTTPError(http.StatusBadRequest, "Invalid Business ID")
+	}
+
+	transactions, err := h.service.ListFeeTransactions(c.Request().Context(), userID, businessID)
+	if err != nil {
+		if errors.Is(err, ErrNotBusinessMember) || errors.Is(err, ErrUnauthorizedAccess) || errors.Is(err, ErrInsufficientPermission) {
+			return echo.NewHTTPError(http.StatusForbidden, err.Error())
+		}
+		return echo.NewHTTPError(http.StatusBadRequest, err.Error())
+	}
+
+	return common.SuccessResponse(c, transactions)
 }

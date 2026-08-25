@@ -58,6 +58,21 @@ type Repository interface {
 	GetSettlementItems(ctx context.Context, settlementID uuid.UUID) ([]*SettlementItem, error)
 	UpdateSettlementStatus(ctx context.Context, id uuid.UUID, status SettlementStatus, processedAt *time.Time, journalEntryID *uuid.UUID, failureReason string) error
 	GetTotalSettledAmount(ctx context.Context, paymentIntentID uuid.UUID) (int64, error)
+
+	// Fees (Phase 3A.5)
+	CreateFeeRule(ctx context.Context, rule *FeeRule) error
+	GetFeeRule(ctx context.Context, id uuid.UUID) (*FeeRule, error)
+	ListFeeRules(ctx context.Context, businessID uuid.UUID) ([]*FeeRule, error)
+	GetActiveFeeRule(ctx context.Context, businessID uuid.UUID, txType string, currency string) (*FeeRule, error)
+	UpdateFeeRuleStatus(ctx context.Context, id uuid.UUID, status FeeRuleStatus) error
+	CreateFeeTransaction(ctx context.Context, feeTx *FeeTransaction) error
+	GetFeeTransaction(ctx context.Context, id uuid.UUID) (*FeeTransaction, error)
+	GetFeeTransactionBySource(ctx context.Context, sourceID uuid.UUID, sourceType string) (*FeeTransaction, error)
+	GetFeeTransactionByIdempotencyKey(ctx context.Context, key string) (*FeeTransaction, error)
+	ListFeeTransactions(ctx context.Context, businessID uuid.UUID) ([]*FeeTransaction, error)
+	UpdateFeeTransactionStatus(ctx context.Context, id uuid.UUID, status FeeTransactionStatus, refundedAmount int64, journalEntryID *uuid.UUID) error
+	GetFeeSummary(ctx context.Context, businessID uuid.UUID, currency string) (*FeeSummary, error)
+	GetTotalFeesCollected(ctx context.Context, paymentIntentID uuid.UUID) (int64, error)
 }
 
 // MemoryBusinessRepository is an in-memory repository for sandbox and unit testing with full ACID-like locking.
@@ -78,6 +93,10 @@ type MemoryBusinessRepository struct {
 	settlements        map[uuid.UUID]*Settlement
 	settlementsByIdemp map[string]*Settlement
 	settlementItems    map[uuid.UUID][]*SettlementItem // settlementID -> items
+	feeRules           map[uuid.UUID]*FeeRule
+	feeTransactions    map[uuid.UUID]*FeeTransaction
+	feeTxBySource      map[string]*FeeTransaction // "sourceID:sourceType" -> feeTx
+	feeTxByIdemp       map[string]*FeeTransaction
 }
 
 func NewMemoryBusinessRepository(ledgerRepo ledger.Repository) *MemoryBusinessRepository {
@@ -97,6 +116,10 @@ func NewMemoryBusinessRepository(ledgerRepo ledger.Repository) *MemoryBusinessRe
 		settlements:        make(map[uuid.UUID]*Settlement),
 		settlementsByIdemp: make(map[string]*Settlement),
 		settlementItems:    make(map[uuid.UUID][]*SettlementItem),
+		feeRules:           make(map[uuid.UUID]*FeeRule),
+		feeTransactions:    make(map[uuid.UUID]*FeeTransaction),
+		feeTxBySource:      make(map[string]*FeeTransaction),
+		feeTxByIdemp:       make(map[string]*FeeTransaction),
 	}
 }
 
@@ -559,7 +582,7 @@ func (r *MemoryBusinessRepository) GetTotalRefundedAmount(ctx context.Context, p
 
 	var total int64
 	for _, ref := range r.refunds {
-		if ref.PaymentIntentID == paymentIntentID && ref.Status == RefundSucceeded {
+		if ref.PaymentIntentID == paymentIntentID && (ref.Status == RefundSucceeded || ref.Status == RefundRequested) {
 			total += ref.Amount
 		}
 	}
@@ -706,6 +729,217 @@ func (r *MemoryBusinessRepository) GetTotalSettledAmount(ctx context.Context, pa
 			if it.PaymentIntentID == paymentIntentID {
 				total += it.NetAmount
 			}
+		}
+	}
+	return total, nil
+}
+
+// ========================
+// Phase 3A.5 — Fee Repository (Memory)
+// ========================
+
+func (r *MemoryBusinessRepository) CreateFeeRule(ctx context.Context, rule *FeeRule) error {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+
+	r.feeRules[rule.ID] = rule
+	return nil
+}
+
+func (r *MemoryBusinessRepository) GetFeeRule(ctx context.Context, id uuid.UUID) (*FeeRule, error) {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+
+	rule, ok := r.feeRules[id]
+	if !ok {
+		return nil, ErrFeeRuleNotFound
+	}
+	return rule, nil
+}
+
+func (r *MemoryBusinessRepository) ListFeeRules(ctx context.Context, businessID uuid.UUID) ([]*FeeRule, error) {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+
+	var result []*FeeRule
+	for _, rule := range r.feeRules {
+		if rule.BusinessID != nil && *rule.BusinessID == businessID {
+			result = append(result, rule)
+		}
+	}
+	return result, nil
+}
+
+func (r *MemoryBusinessRepository) GetActiveFeeRule(ctx context.Context, businessID uuid.UUID, txType string, currency string) (*FeeRule, error) {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+
+	now := time.Now().UTC()
+
+	// Priority 1: Business-specific active rule
+	for _, rule := range r.feeRules {
+		if rule.BusinessID != nil && *rule.BusinessID == businessID &&
+			rule.TransactionType == txType &&
+			rule.Currency == currency &&
+			rule.Status == FeeRuleActive &&
+			!now.Before(rule.EffectiveFrom) &&
+			(rule.EffectiveUntil == nil || !now.After(*rule.EffectiveUntil)) {
+			return rule, nil
+		}
+	}
+
+	// Priority 2: Global platform default (BusinessID == nil)
+	for _, rule := range r.feeRules {
+		if rule.BusinessID == nil &&
+			rule.TransactionType == txType &&
+			rule.Currency == currency &&
+			rule.Status == FeeRuleActive &&
+			!now.Before(rule.EffectiveFrom) &&
+			(rule.EffectiveUntil == nil || !now.After(*rule.EffectiveUntil)) {
+			return rule, nil
+		}
+	}
+
+	return nil, ErrFeeRuleNotFound
+}
+
+func (r *MemoryBusinessRepository) UpdateFeeRuleStatus(ctx context.Context, id uuid.UUID, status FeeRuleStatus) error {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+
+	rule, ok := r.feeRules[id]
+	if !ok {
+		return ErrFeeRuleNotFound
+	}
+	rule.Status = status
+	rule.UpdatedAt = time.Now().UTC()
+	return nil
+}
+
+func (r *MemoryBusinessRepository) CreateFeeTransaction(ctx context.Context, feeTx *FeeTransaction) error {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+
+	// Enforce unique source constraint (equivalent to UNIQUE(source_transaction_id, source_transaction_type) in PostgreSQL)
+	sourceKey := feeTx.SourceTransactionID.String() + ":" + feeTx.SourceTransactionType
+	if _, exists := r.feeTxBySource[sourceKey]; exists {
+		return ErrDuplicateFeeTransaction
+	}
+
+	// Check idempotency
+	if feeTx.IdempotencyKey != "" {
+		if existing, ok := r.feeTxByIdemp[feeTx.IdempotencyKey]; ok {
+			// Already exists with same key — idempotent return handled by caller
+			_ = existing
+			return ErrFeeAlreadyCollected
+		}
+	}
+
+	r.feeTransactions[feeTx.ID] = feeTx
+	r.feeTxBySource[sourceKey] = feeTx
+	if feeTx.IdempotencyKey != "" {
+		r.feeTxByIdemp[feeTx.IdempotencyKey] = feeTx
+	}
+	return nil
+}
+
+func (r *MemoryBusinessRepository) GetFeeTransaction(ctx context.Context, id uuid.UUID) (*FeeTransaction, error) {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+
+	feeTx, ok := r.feeTransactions[id]
+	if !ok {
+		return nil, ErrFeeTransactionNotFound
+	}
+	return feeTx, nil
+}
+
+func (r *MemoryBusinessRepository) GetFeeTransactionBySource(ctx context.Context, sourceID uuid.UUID, sourceType string) (*FeeTransaction, error) {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+
+	key := sourceID.String() + ":" + sourceType
+	feeTx, ok := r.feeTxBySource[key]
+	if !ok {
+		return nil, ErrFeeTransactionNotFound
+	}
+	return feeTx, nil
+}
+
+func (r *MemoryBusinessRepository) GetFeeTransactionByIdempotencyKey(ctx context.Context, key string) (*FeeTransaction, error) {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+
+	feeTx, ok := r.feeTxByIdemp[key]
+	if !ok {
+		return nil, ErrFeeTransactionNotFound
+	}
+	return feeTx, nil
+}
+
+func (r *MemoryBusinessRepository) ListFeeTransactions(ctx context.Context, businessID uuid.UUID) ([]*FeeTransaction, error) {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+
+	var result []*FeeTransaction
+	for _, ft := range r.feeTransactions {
+		if ft.BusinessID == businessID {
+			result = append(result, ft)
+		}
+	}
+	return result, nil
+}
+
+func (r *MemoryBusinessRepository) UpdateFeeTransactionStatus(ctx context.Context, id uuid.UUID, status FeeTransactionStatus, refundedAmount int64, journalEntryID *uuid.UUID) error {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+
+	feeTx, ok := r.feeTransactions[id]
+	if !ok {
+		return ErrFeeTransactionNotFound
+	}
+	feeTx.Status = status
+	if refundedAmount > 0 {
+		feeTx.RefundedFeeAmount = refundedAmount
+	}
+	if journalEntryID != nil {
+		feeTx.JournalEntryID = journalEntryID
+	}
+	return nil
+}
+
+func (r *MemoryBusinessRepository) GetFeeSummary(ctx context.Context, businessID uuid.UUID, currency string) (*FeeSummary, error) {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+
+	summary := &FeeSummary{
+		BusinessID: businessID,
+		Currency:   currency,
+		IsSandbox:  true,
+	}
+	for _, ft := range r.feeTransactions {
+		if ft.BusinessID == businessID && ft.Currency == currency {
+			summary.TransactionCount++
+			if ft.Status == FeeStatusCollected || ft.Status == FeeStatusRefunded {
+				summary.TotalFeesCollected += ft.FeeAmount
+				summary.TotalFeesRefunded += ft.RefundedFeeAmount
+			}
+		}
+	}
+	summary.NetFeeRevenue = summary.TotalFeesCollected - summary.TotalFeesRefunded
+	return summary, nil
+}
+
+func (r *MemoryBusinessRepository) GetTotalFeesCollected(ctx context.Context, paymentIntentID uuid.UUID) (int64, error) {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+
+	var total int64
+	for _, ft := range r.feeTransactions {
+		if ft.SourceTransactionID == paymentIntentID &&
+			ft.SourceTransactionType == "merchant_payment" &&
+			(ft.Status == FeeStatusCollected || ft.Status == FeeStatusRefunded) {
+			total += ft.FeeAmount - ft.RefundedFeeAmount
 		}
 	}
 	return total, nil
@@ -1382,7 +1616,7 @@ func (r *PostgresBusinessRepository) GetTotalRefundedAmount(ctx context.Context,
 	query := `
 		SELECT COALESCE(SUM(amount), 0)
 		FROM refunds
-		WHERE payment_intent_id = $1 AND status = 'SUCCEEDED'
+		WHERE payment_intent_id = $1 AND status IN ('REQUESTED', 'SUCCEEDED')
 	`
 	var total int64
 	err := r.pool.QueryRow(ctx, query, paymentIntentID).Scan(&total)
@@ -1599,6 +1833,283 @@ func (r *PostgresBusinessRepository) GetTotalSettledAmount(ctx context.Context, 
 		FROM settlement_items si
 		JOIN settlements s ON s.id = si.settlement_id
 		WHERE si.payment_intent_id = $1 AND s.status IN ('PENDING', 'PROCESSING', 'SUCCEEDED')
+	`
+	var total int64
+	err := r.pool.QueryRow(ctx, query, paymentIntentID).Scan(&total)
+	return total, err
+}
+
+// ========================
+// Phase 3A.5 — Fee Repository (Postgres)
+// ========================
+
+func (r *PostgresBusinessRepository) CreateFeeRule(ctx context.Context, rule *FeeRule) error {
+	query := `
+		INSERT INTO fee_rules (id, business_id, transaction_type, fee_type, fixed_amount, percentage_bps, minimum_fee, maximum_fee, currency, status, is_refundable, effective_from, effective_until, created_at, updated_at)
+		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15)
+	`
+	_, err := r.pool.Exec(ctx, query,
+		rule.ID, rule.BusinessID, rule.TransactionType, string(rule.FeeType),
+		rule.FixedAmount, rule.PercentageBps, rule.MinimumFee, rule.MaximumFee,
+		rule.Currency, string(rule.Status), rule.IsRefundable,
+		rule.EffectiveFrom, rule.EffectiveUntil, rule.CreatedAt, rule.UpdatedAt,
+	)
+	return err
+}
+
+func (r *PostgresBusinessRepository) GetFeeRule(ctx context.Context, id uuid.UUID) (*FeeRule, error) {
+	query := `
+		SELECT id, business_id, transaction_type, fee_type, fixed_amount, percentage_bps, minimum_fee, maximum_fee, currency, status, is_refundable, effective_from, effective_until, created_at, updated_at
+		FROM fee_rules WHERE id = $1
+	`
+	var rule FeeRule
+	var businessID sql.NullString
+	var effectiveUntil sql.NullTime
+	var feeType, status string
+	err := r.pool.QueryRow(ctx, query, id).Scan(
+		&rule.ID, &businessID, &rule.TransactionType, &feeType,
+		&rule.FixedAmount, &rule.PercentageBps, &rule.MinimumFee, &rule.MaximumFee,
+		&rule.Currency, &status, &rule.IsRefundable,
+		&rule.EffectiveFrom, &effectiveUntil, &rule.CreatedAt, &rule.UpdatedAt,
+	)
+	if err != nil {
+		return nil, ErrFeeRuleNotFound
+	}
+	rule.FeeType = FeeType(feeType)
+	rule.Status = FeeRuleStatus(status)
+	if businessID.Valid {
+		parsed, _ := uuid.Parse(businessID.String)
+		rule.BusinessID = &parsed
+	}
+	if effectiveUntil.Valid {
+		rule.EffectiveUntil = &effectiveUntil.Time
+	}
+	return &rule, nil
+}
+
+func (r *PostgresBusinessRepository) ListFeeRules(ctx context.Context, businessID uuid.UUID) ([]*FeeRule, error) {
+	query := `
+		SELECT id, business_id, transaction_type, fee_type, fixed_amount, percentage_bps, minimum_fee, maximum_fee, currency, status, is_refundable, effective_from, effective_until, created_at, updated_at
+		FROM fee_rules WHERE business_id = $1 ORDER BY created_at DESC
+	`
+	rows, err := r.pool.Query(ctx, query, businessID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var result []*FeeRule
+	for rows.Next() {
+		var rule FeeRule
+		var businessIDN sql.NullString
+		var effectiveUntil sql.NullTime
+		var feeType, status string
+		if err := rows.Scan(
+			&rule.ID, &businessIDN, &rule.TransactionType, &feeType,
+			&rule.FixedAmount, &rule.PercentageBps, &rule.MinimumFee, &rule.MaximumFee,
+			&rule.Currency, &status, &rule.IsRefundable,
+			&rule.EffectiveFrom, &effectiveUntil, &rule.CreatedAt, &rule.UpdatedAt,
+		); err != nil {
+			return nil, err
+		}
+		rule.FeeType = FeeType(feeType)
+		rule.Status = FeeRuleStatus(status)
+		if businessIDN.Valid {
+			parsed, _ := uuid.Parse(businessIDN.String)
+			rule.BusinessID = &parsed
+		}
+		if effectiveUntil.Valid {
+			rule.EffectiveUntil = &effectiveUntil.Time
+		}
+		result = append(result, &rule)
+	}
+	return result, nil
+}
+
+func (r *PostgresBusinessRepository) GetActiveFeeRule(ctx context.Context, businessID uuid.UUID, txType string, currency string) (*FeeRule, error) {
+	query := `
+		SELECT id, business_id, transaction_type, fee_type, fixed_amount, percentage_bps, minimum_fee, maximum_fee, currency, status, is_refundable, effective_from, effective_until, created_at, updated_at
+		FROM fee_rules
+		WHERE (business_id = $1 OR business_id IS NULL)
+		  AND transaction_type = $2 AND currency = $3 AND status = 'ACTIVE'
+		  AND effective_from <= NOW()
+		  AND (effective_until IS NULL OR effective_until >= NOW())
+		ORDER BY business_id IS NULL ASC, created_at DESC
+		LIMIT 1
+	`
+	var rule FeeRule
+	var businessIDN sql.NullString
+	var effectiveUntil sql.NullTime
+	var feeType, status string
+	err := r.pool.QueryRow(ctx, query, businessID, txType, currency).Scan(
+		&rule.ID, &businessIDN, &rule.TransactionType, &feeType,
+		&rule.FixedAmount, &rule.PercentageBps, &rule.MinimumFee, &rule.MaximumFee,
+		&rule.Currency, &status, &rule.IsRefundable,
+		&rule.EffectiveFrom, &effectiveUntil, &rule.CreatedAt, &rule.UpdatedAt,
+	)
+	if err != nil {
+		return nil, ErrFeeRuleNotFound
+	}
+	rule.FeeType = FeeType(feeType)
+	rule.Status = FeeRuleStatus(status)
+	if businessIDN.Valid {
+		parsed, _ := uuid.Parse(businessIDN.String)
+		rule.BusinessID = &parsed
+	}
+	if effectiveUntil.Valid {
+		rule.EffectiveUntil = &effectiveUntil.Time
+	}
+	return &rule, nil
+}
+
+func (r *PostgresBusinessRepository) UpdateFeeRuleStatus(ctx context.Context, id uuid.UUID, status FeeRuleStatus) error {
+	query := `UPDATE fee_rules SET status = $1, updated_at = NOW() WHERE id = $2`
+	tag, err := r.pool.Exec(ctx, query, string(status), id)
+	if err != nil {
+		return err
+	}
+	if tag.RowsAffected() == 0 {
+		return ErrFeeRuleNotFound
+	}
+	return nil
+}
+
+func (r *PostgresBusinessRepository) CreateFeeTransaction(ctx context.Context, feeTx *FeeTransaction) error {
+	query := `
+		INSERT INTO fee_transactions (id, business_id, fee_rule_id, source_transaction_type, source_transaction_id, gross_amount, fee_amount, currency, status, is_refundable, refunded_fee_amount, idempotency_key, journal_entry_id, created_at, collected_at)
+		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15)
+	`
+	_, err := r.pool.Exec(ctx, query,
+		feeTx.ID, feeTx.BusinessID, feeTx.FeeRuleID,
+		feeTx.SourceTransactionType, feeTx.SourceTransactionID,
+		feeTx.GrossAmount, feeTx.FeeAmount, feeTx.Currency,
+		string(feeTx.Status), feeTx.IsRefundable, feeTx.RefundedFeeAmount,
+		feeTx.IdempotencyKey, feeTx.JournalEntryID, feeTx.CreatedAt, feeTx.CollectedAt,
+	)
+	return err
+}
+
+func (r *PostgresBusinessRepository) GetFeeTransaction(ctx context.Context, id uuid.UUID) (*FeeTransaction, error) {
+	query := `
+		SELECT id, business_id, fee_rule_id, source_transaction_type, source_transaction_id, gross_amount, fee_amount, currency, status, is_refundable, refunded_fee_amount, idempotency_key, journal_entry_id, created_at, collected_at
+		FROM fee_transactions WHERE id = $1
+	`
+	return r.scanFeeTransaction(r.pool.QueryRow(ctx, query, id))
+}
+
+func (r *PostgresBusinessRepository) GetFeeTransactionBySource(ctx context.Context, sourceID uuid.UUID, sourceType string) (*FeeTransaction, error) {
+	query := `
+		SELECT id, business_id, fee_rule_id, source_transaction_type, source_transaction_id, gross_amount, fee_amount, currency, status, is_refundable, refunded_fee_amount, idempotency_key, journal_entry_id, created_at, collected_at
+		FROM fee_transactions WHERE source_transaction_id = $1 AND source_transaction_type = $2
+	`
+	return r.scanFeeTransaction(r.pool.QueryRow(ctx, query, sourceID, sourceType))
+}
+
+func (r *PostgresBusinessRepository) GetFeeTransactionByIdempotencyKey(ctx context.Context, key string) (*FeeTransaction, error) {
+	query := `
+		SELECT id, business_id, fee_rule_id, source_transaction_type, source_transaction_id, gross_amount, fee_amount, currency, status, is_refundable, refunded_fee_amount, idempotency_key, journal_entry_id, created_at, collected_at
+		FROM fee_transactions WHERE idempotency_key = $1
+	`
+	return r.scanFeeTransaction(r.pool.QueryRow(ctx, query, key))
+}
+
+func (r *PostgresBusinessRepository) scanFeeTransaction(row interface {
+	Scan(dest ...interface{}) error
+}) (*FeeTransaction, error) {
+	var ft FeeTransaction
+	var feeRuleID sql.NullString
+	var journalEntryID sql.NullString
+	var idempKey sql.NullString
+	var collectedAt sql.NullTime
+	var status string
+	err := row.Scan(
+		&ft.ID, &ft.BusinessID, &feeRuleID,
+		&ft.SourceTransactionType, &ft.SourceTransactionID,
+		&ft.GrossAmount, &ft.FeeAmount, &ft.Currency,
+		&status, &ft.IsRefundable, &ft.RefundedFeeAmount,
+		&idempKey, &journalEntryID, &ft.CreatedAt, &collectedAt,
+	)
+	if err != nil {
+		return nil, ErrFeeTransactionNotFound
+	}
+	ft.Status = FeeTransactionStatus(status)
+	if feeRuleID.Valid {
+		parsed, _ := uuid.Parse(feeRuleID.String)
+		ft.FeeRuleID = &parsed
+	}
+	if journalEntryID.Valid {
+		parsed, _ := uuid.Parse(journalEntryID.String)
+		ft.JournalEntryID = &parsed
+	}
+	if idempKey.Valid {
+		ft.IdempotencyKey = idempKey.String
+	}
+	if collectedAt.Valid {
+		ft.CollectedAt = &collectedAt.Time
+	}
+	return &ft, nil
+}
+
+func (r *PostgresBusinessRepository) ListFeeTransactions(ctx context.Context, businessID uuid.UUID) ([]*FeeTransaction, error) {
+	query := `
+		SELECT id, business_id, fee_rule_id, source_transaction_type, source_transaction_id, gross_amount, fee_amount, currency, status, is_refundable, refunded_fee_amount, idempotency_key, journal_entry_id, created_at, collected_at
+		FROM fee_transactions WHERE business_id = $1 ORDER BY created_at DESC
+	`
+	rows, err := r.pool.Query(ctx, query, businessID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var result []*FeeTransaction
+	for rows.Next() {
+		ft, err := r.scanFeeTransaction(rows)
+		if err != nil {
+			return nil, err
+		}
+		result = append(result, ft)
+	}
+	return result, nil
+}
+
+func (r *PostgresBusinessRepository) UpdateFeeTransactionStatus(ctx context.Context, id uuid.UUID, status FeeTransactionStatus, refundedAmount int64, journalEntryID *uuid.UUID) error {
+	query := `UPDATE fee_transactions SET status = $1, refunded_fee_amount = $2, journal_entry_id = COALESCE($3, journal_entry_id) WHERE id = $4`
+	tag, err := r.pool.Exec(ctx, query, string(status), refundedAmount, journalEntryID, id)
+	if err != nil {
+		return err
+	}
+	if tag.RowsAffected() == 0 {
+		return ErrFeeTransactionNotFound
+	}
+	return nil
+}
+
+func (r *PostgresBusinessRepository) GetFeeSummary(ctx context.Context, businessID uuid.UUID, currency string) (*FeeSummary, error) {
+	query := `
+		SELECT
+			COALESCE(SUM(CASE WHEN status IN ('COLLECTED', 'REFUNDED') THEN fee_amount ELSE 0 END), 0),
+			COALESCE(SUM(CASE WHEN status IN ('COLLECTED', 'REFUNDED') THEN refunded_fee_amount ELSE 0 END), 0),
+			COUNT(*)
+		FROM fee_transactions WHERE business_id = $1 AND currency = $2
+	`
+	summary := &FeeSummary{
+		BusinessID: businessID,
+		Currency:   currency,
+		IsSandbox:  true,
+	}
+	err := r.pool.QueryRow(ctx, query, businessID, currency).Scan(
+		&summary.TotalFeesCollected, &summary.TotalFeesRefunded, &summary.TransactionCount,
+	)
+	if err != nil {
+		return nil, err
+	}
+	summary.NetFeeRevenue = summary.TotalFeesCollected - summary.TotalFeesRefunded
+	return summary, nil
+}
+
+func (r *PostgresBusinessRepository) GetTotalFeesCollected(ctx context.Context, paymentIntentID uuid.UUID) (int64, error) {
+	query := `
+		SELECT COALESCE(SUM(fee_amount - refunded_fee_amount), 0)
+		FROM fee_transactions
+		WHERE source_transaction_id = $1 AND source_transaction_type = 'merchant_payment' AND status IN ('COLLECTED', 'REFUNDED')
 	`
 	var total int64
 	err := r.pool.QueryRow(ctx, query, paymentIntentID).Scan(&total)
