@@ -1224,6 +1224,52 @@
                     </div>
                 </div>
 
+                <!-- Merchant Commissions & Fee Engine Section (Phase 3A.5) -->
+                <div style="background: var(--bg-surface-2); border: 1px solid var(--border-subtle); border-radius: var(--radius-lg); padding: 20px; margin-bottom: 24px;">
+                    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 14px; flex-wrap: wrap; gap: 10px;">
+                        <div>
+                            <div style="display: flex; align-items: center; gap: 8px;">
+                                <h3 style="font-family: 'Outfit'; font-size: 18px; font-weight: 800;">💎 Tarification & Commissions (FeeEngine)</h3>
+                                <span class="status-dot badge-active" style="background: rgba(124, 58, 237, 0.15); color: var(--primary-light);">PHASE 3A.5 ACTIVE</span>
+                            </div>
+                            <p style="font-size: 12px; color: var(--text-secondary); margin-top: 2px;">
+                                Calcul déterministe en points de base (int64) • Double-Entry Append-Only • 0 Float
+                            </p>
+                        </div>
+                        <div style="display: flex; align-items: center; gap: 12px;">
+                            <div style="text-align: right;">
+                                <span style="font-size: 11px; color: var(--text-muted);">Revenus Commissions :</span>
+                                <div style="font-size: 18px; font-weight: 800; color: var(--primary-light);" id="biz-fee-revenue">0 FCFA</div>
+                            </div>
+                            <button class="btn-action" style="background: var(--primary); padding: 8px 14px; font-size: 12px;" onclick="openFeeRuleModal()">⚙️ Configurer Règle</button>
+                        </div>
+                    </div>
+
+                    <!-- Fee Rules & Summary Stats -->
+                    <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 12px; margin-bottom: 16px;">
+                        <div style="background: var(--bg-surface-1); border: 1px solid var(--border-subtle); border-radius: var(--radius-md); padding: 12px;">
+                            <div style="font-size: 11px; color: var(--text-muted);">Règle Active</div>
+                            <div style="font-size: 14px; font-weight: 700; color: var(--text-primary); margin-top: 2px;" id="fee-rule-active-desc">HYBRID (1.50% + 50 FCFA)</div>
+                            <div style="font-size: 10px; color: #10B981; margin-top: 2px;">● Actif • Remboursable</div>
+                        </div>
+                        <div style="background: var(--bg-surface-1); border: 1px solid var(--border-subtle); border-radius: var(--radius-md); padding: 12px;">
+                            <div style="font-size: 11px; color: var(--text-muted);">Commissions Perçues</div>
+                            <div style="font-size: 14px; font-weight: 700; color: #10B981; margin-top: 2px;" id="fee-total-collected">0 FCFA</div>
+                            <div style="font-size: 10px; color: var(--text-muted); margin-top: 2px;">Sur paiements marchands</div>
+                        </div>
+                        <div style="background: var(--bg-surface-1); border: 1px solid var(--border-subtle); border-radius: var(--radius-md); padding: 12px;">
+                            <div style="font-size: 11px; color: var(--text-muted);">Commissions Restituées</div>
+                            <div style="font-size: 14px; font-weight: 700; color: var(--gold); margin-top: 2px;" id="fee-total-refunded">0 FCFA</div>
+                            <div style="font-size: 10px; color: var(--text-muted); margin-top: 2px;">Sur remboursements</div>
+                        </div>
+                    </div>
+
+                    <!-- Simulator Trigger Button -->
+                    <div style="display: flex; gap: 10px;">
+                        <button class="btn-action" style="flex: 1; background: var(--bg-surface-1); border: 1px solid var(--border-medium); font-size: 12px;" onclick="openFeeCalculatorModal()">🧮 Simuler un Calcul de Frais (Sandbox)</button>
+                    </div>
+                </div>
+
                 <!-- Members Management Section -->
                 <div style="background: var(--bg-surface-2); border: 1px solid var(--border-subtle); border-radius: var(--radius-lg); padding: 20px;">
                     <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px;">
@@ -2418,6 +2464,173 @@
 
                 <button class="btn-action" style="width: 100%;" onclick="closePayModal()">Fermer le Reçu de Règlement</button>
             `);
+        }
+
+        // ════════════════════════════════════════════════
+        // PHASE 3A.5 INTERACTIVE FEE SIMULATOR & RULES
+        // ════════════════════════════════════════════════
+
+        let activeFeeRule = {
+            feeType: 'HYBRID',
+            fixedAmount: 50,
+            percentageBps: 150, // 1.50%
+            minimumFee: 50,
+            maximumFee: 5000,
+            isRefundable: true
+        };
+
+        function openFeeRuleModal() {
+            openModalContent(`
+                <h2 style="font-family: 'Outfit'; font-size: 20px; font-weight: 800; margin-bottom: 6px;">⚙️ Configuration Tarifaire</h2>
+                <p style="color: var(--primary-light); font-size: 12px; margin-bottom: 16px;">FeeEngine (Phase 3A.5) • Déterministe en int64</p>
+                
+                <div style="display: flex; flex-direction: column; gap: 12px;">
+                    <div>
+                        <label style="font-size: 12px; font-weight: 700; color: var(--text-secondary);">Type de Frais</label>
+                        <select id="fee-type-input" style="width: 100%; padding: 10px; border-radius: 10px; border: 1px solid var(--border-subtle); background: var(--bg-surface-2); color: var(--text-primary); margin-top: 4px;">
+                            <option value="HYBRID" ${activeFeeRule.feeType === 'HYBRID' ? 'selected' : ''}>HYBRID (Fixe + Pourcentage)</option>
+                            <option value="PERCENTAGE" ${activeFeeRule.feeType === 'PERCENTAGE' ? 'selected' : ''}>PERCENTAGE (Pourcentage pur)</option>
+                            <option value="FIXED" ${activeFeeRule.feeType === 'FIXED' ? 'selected' : ''}>FIXED (Montant fixe)</option>
+                        </select>
+                    </div>
+
+                    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px;">
+                        <div>
+                            <label style="font-size: 12px; font-weight: 700; color: var(--text-secondary);">Montant Fixe (FCFA)</label>
+                            <input type="number" id="fee-fixed-input" value="${activeFeeRule.fixedAmount}" min="0" style="width: 100%; padding: 10px; border-radius: 10px; border: 1px solid var(--border-subtle); background: var(--bg-surface-2); color: var(--text-primary); margin-top: 4px;">
+                        </div>
+                        <div>
+                            <label style="font-size: 12px; font-weight: 700; color: var(--text-secondary);">Pourcentage (Basis Points)</label>
+                            <input type="number" id="fee-bps-input" value="${activeFeeRule.percentageBps}" min="0" max="10000" style="width: 100%; padding: 10px; border-radius: 10px; border: 1px solid var(--border-subtle); background: var(--bg-surface-2); color: var(--text-primary); margin-top: 4px;">
+                            <div style="font-size: 10px; color: var(--text-muted); margin-top: 2px;">100 bps = 1.00%</div>
+                        </div>
+                    </div>
+
+                    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px;">
+                        <div>
+                            <label style="font-size: 12px; font-weight: 700; color: var(--text-secondary);">Plancher Min (FCFA)</label>
+                            <input type="number" id="fee-min-input" value="${activeFeeRule.minimumFee}" min="0" style="width: 100%; padding: 10px; border-radius: 10px; border: 1px solid var(--border-subtle); background: var(--bg-surface-2); color: var(--text-primary); margin-top: 4px;">
+                        </div>
+                        <div>
+                            <label style="font-size: 12px; font-weight: 700; color: var(--text-secondary);">Plafond Max (FCFA)</label>
+                            <input type="number" id="fee-max-input" value="${activeFeeRule.maximumFee}" min="0" style="width: 100%; padding: 10px; border-radius: 10px; border: 1px solid var(--border-subtle); background: var(--bg-surface-2); color: var(--text-primary); margin-top: 4px;">
+                        </div>
+                    </div>
+
+                    <div style="background: rgba(124, 58, 237, 0.08); border: 1px solid rgba(124, 58, 237, 0.2); border-radius: 8px; padding: 10px; font-size: 11px; color: var(--text-secondary);">
+                        🔒 <strong>Immutabilité & Sécurité</strong> :<br>
+                        • Les transactions passées conservent leur tarification historique.<br>
+                        • Écritures Double-Entry : <strong>Credit Compte Marchand / Debit Platform Fee Revenue</strong>.
+                    </div>
+
+                    <button class="btn-action" style="width: 100%; margin-top: 8px; background: var(--primary);" onclick="saveFeeRule()">Enregistrer la Règle</button>
+                    <button class="btn-action" style="width: 100%; background: var(--bg-surface-2);" onclick="closePayModal()">Fermer</button>
+                </div>
+            `);
+        }
+
+        function saveFeeRule() {
+            const feeType = document.getElementById('fee-type-input').value;
+            const fixed = parseInt(document.getElementById('fee-fixed-input').value, 10) || 0;
+            const bps = parseInt(document.getElementById('fee-bps-input').value, 10) || 0;
+            const minF = parseInt(document.getElementById('fee-min-input').value, 10) || 0;
+            const maxF = parseInt(document.getElementById('fee-max-input').value, 10) || 0;
+
+            activeFeeRule = {
+                feeType,
+                fixedAmount: fixed,
+                percentageBps: bps,
+                minimumFee: minF,
+                maximumFee: maxF,
+                isRefundable: true
+            };
+
+            const descEl = document.getElementById('fee-rule-active-desc');
+            if (descEl) {
+                const pct = (bps / 100).toFixed(2);
+                descEl.innerText = `${feeType} (${pct}% + ${fixed} FCFA)`;
+            }
+
+            closePayModal();
+            alert('Règle tarifaire mise à jour avec succès.');
+        }
+
+        function openFeeCalculatorModal() {
+            openModalContent(`
+                <h2 style="font-family: 'Outfit'; font-size: 20px; font-weight: 800; margin-bottom: 6px;">🧮 Simulateur FeeEngine</h2>
+                <p style="color: var(--primary-light); font-size: 12px; margin-bottom: 16px;">Calcul déterministe en direct (0 Float)</p>
+                
+                <div style="display: flex; flex-direction: column; gap: 12px;">
+                    <div>
+                        <label style="font-size: 12px; font-weight: 700; color: var(--text-secondary);">Montant Brut de la Transaction (FCFA)</label>
+                        <input type="number" id="fee-sim-amount" value="10000" min="100" style="width: 100%; padding: 10px; border-radius: 10px; border: 1px solid var(--border-subtle); background: var(--bg-surface-2); color: var(--text-primary); margin-top: 4px; font-size: 18px; font-weight: 700;">
+                    </div>
+
+                    <button class="btn-action" style="width: 100%; background: var(--primary);" onclick="calculateFeeLive()">Calculer la Commission</button>
+
+                    <div id="fee-sim-result" style="background: var(--bg-surface-2); border-radius: 10px; padding: 12px; border: 1px solid var(--border-subtle); font-size: 12px; display: flex; flex-direction: column; gap: 6px;">
+                        <div style="display: flex; justify-content: space-between;">
+                            <span style="color: var(--text-muted);">Montant Brut :</span>
+                            <span style="font-weight: 700;">10 000 FCFA</span>
+                        </div>
+                        <div style="display: flex; justify-content: space-between;">
+                            <span style="color: var(--text-muted);">Part Proportionnelle (1.50%) :</span>
+                            <span style="font-weight: 700;">150 FCFA</span>
+                        </div>
+                        <div style="display: flex; justify-content: space-between;">
+                            <span style="color: var(--text-muted);">Part Fixe :</span>
+                            <span style="font-weight: 700;">50 FCFA</span>
+                        </div>
+                        <div style="display: flex; justify-content: space-between; border-top: 1px solid var(--border-subtle); padding-top: 6px;">
+                            <span style="color: var(--text-muted); font-weight: 700;">Commission MÏÏghO :</span>
+                            <span style="font-weight: 800; color: var(--primary-light); font-size: 15px;">200 FCFA</span>
+                        </div>
+                        <div style="display: flex; justify-content: space-between;">
+                            <span style="color: var(--text-muted); font-weight: 700;">Net Marchand :</span>
+                            <span style="font-weight: 800; color: #10B981; font-size: 15px;">9 800 FCFA</span>
+                        </div>
+                    </div>
+
+                    <button class="btn-action" style="width: 100%; background: var(--bg-surface-2);" onclick="closePayModal()">Fermer</button>
+                </div>
+            `);
+        }
+
+        function calculateFeeLive() {
+            const gross = parseInt(document.getElementById('fee-sim-amount').value, 10) || 0;
+            const pctPart = Math.floor((gross * activeFeeRule.percentageBps) / 10000);
+            const fixedPart = activeFeeRule.fixedAmount;
+            let rawFee = pctPart + fixedPart;
+            if (activeFeeRule.minimumFee > 0 && rawFee < activeFeeRule.minimumFee) rawFee = activeFeeRule.minimumFee;
+            if (activeFeeRule.maximumFee > 0 && rawFee > activeFeeRule.maximumFee) rawFee = activeFeeRule.maximumFee;
+            if (rawFee > gross) rawFee = gross;
+            const netMerchant = gross - rawFee;
+
+            const resEl = document.getElementById('fee-sim-result');
+            if (resEl) {
+                resEl.innerHTML = `
+                    <div style="display: flex; justify-content: space-between;">
+                        <span style="color: var(--text-muted);">Montant Brut :</span>
+                        <span style="font-weight: 700;">${gross.toLocaleString()} FCFA</span>
+                    </div>
+                    <div style="display: flex; justify-content: space-between;">
+                        <span style="color: var(--text-muted);">Part Proportionnelle (${(activeFeeRule.percentageBps/100).toFixed(2)}%) :</span>
+                        <span style="font-weight: 700;">${pctPart.toLocaleString()} FCFA</span>
+                    </div>
+                    <div style="display: flex; justify-content: space-between;">
+                        <span style="color: var(--text-muted);">Part Fixe :</span>
+                        <span style="font-weight: 700;">${fixedPart.toLocaleString()} FCFA</span>
+                    </div>
+                    <div style="display: flex; justify-content: space-between; border-top: 1px solid var(--border-subtle); padding-top: 6px;">
+                        <span style="color: var(--text-muted); font-weight: 700;">Commission MÏÏghO :</span>
+                        <span style="font-weight: 800; color: var(--primary-light); font-size: 15px;">${rawFee.toLocaleString()} FCFA</span>
+                    </div>
+                    <div style="display: flex; justify-content: space-between;">
+                        <span style="color: var(--text-muted); font-weight: 700;">Net Marchand :</span>
+                        <span style="font-weight: 800; color: #10B981; font-size: 15px;">${netMerchant.toLocaleString()} FCFA</span>
+                    </div>
+                `;
+            }
         }
 
         function switchView(viewKey) {
