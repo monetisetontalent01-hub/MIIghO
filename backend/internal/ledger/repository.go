@@ -16,7 +16,7 @@ var (
 	ErrAccountNotFound      = errors.New("ledger account not found")
 	ErrInsufficientFunds    = errors.New("insufficient funds for transaction")
 	ErrImbalancedEntry      = errors.New("journal entry debits do not match credits (double-entry violation)")
-	ErrDuplicateIdempotency  = errors.New("idempotency key already used")
+	ErrDuplicateIdempotency = errors.New("idempotency key already used")
 	ErrIdempotencyConflict  = errors.New("idempotency key conflict: payload does not match existing transaction")
 	ErrInvalidAmount        = errors.New("transaction amount must be strictly greater than zero")
 	ErrInvalidCurrency      = errors.New("invalid or mismatched currency")
@@ -28,10 +28,10 @@ type Repository interface {
 	GetAccount(ctx context.Context, accountID uuid.UUID) (*LedgerAccount, error)
 	GetAccountByUserID(ctx context.Context, userID uuid.UUID, currency string) (*LedgerAccount, error)
 	GetSystemAccount(ctx context.Context, name string, currency string, accType AccountType) (*LedgerAccount, error)
-	
+
 	// Atomic transaction posting
 	PostJournalEntry(ctx context.Context, entry *JournalEntry, postings []*LedgerPosting, idempotencyKey string) error
-	
+
 	GetBalance(ctx context.Context, accountID uuid.UUID) (int64, error)
 	GetStatement(ctx context.Context, accountID uuid.UUID, from, to time.Time, limit int, offset int) ([]*LedgerPosting, error)
 	GetJournalEntry(ctx context.Context, entryID uuid.UUID) (*JournalEntry, []*LedgerPosting, error)
@@ -44,25 +44,25 @@ type Repository interface {
 // MemoryRepository is a high-performance in-memory double-entry ledger repository with ACID-like locking.
 // Ideal for sandbox simulation and fast unit testing.
 type MemoryRepository struct {
-	mu           sync.RWMutex
-	accounts     map[uuid.UUID]*LedgerAccount
-	userAccounts map[string]uuid.UUID // "userID:currency" -> accountID
-	sysAccounts  map[string]uuid.UUID // "name:currency" -> accountID
-	entries      map[uuid.UUID]*JournalEntry
+	mu             sync.RWMutex
+	accounts       map[uuid.UUID]*LedgerAccount
+	userAccounts   map[string]uuid.UUID // "userID:currency" -> accountID
+	sysAccounts    map[string]uuid.UUID // "name:currency" -> accountID
+	entries        map[uuid.UUID]*JournalEntry
 	orderedEntries []*JournalEntry
-	postings     map[uuid.UUID][]*LedgerPosting // entryID -> postings
-	idempotency  map[string]uuid.UUID           // key -> entryID
+	postings       map[uuid.UUID][]*LedgerPosting // entryID -> postings
+	idempotency    map[string]uuid.UUID           // key -> entryID
 }
 
 func NewMemoryRepository() *MemoryRepository {
 	repo := &MemoryRepository{
-		accounts:     make(map[uuid.UUID]*LedgerAccount),
-		userAccounts: make(map[string]uuid.UUID),
-		sysAccounts:  make(map[string]uuid.UUID),
-		entries:      make(map[uuid.UUID]*JournalEntry),
+		accounts:       make(map[uuid.UUID]*LedgerAccount),
+		userAccounts:   make(map[string]uuid.UUID),
+		sysAccounts:    make(map[string]uuid.UUID),
+		entries:        make(map[uuid.UUID]*JournalEntry),
 		orderedEntries: make([]*JournalEntry, 0),
-		postings:     make(map[uuid.UUID][]*LedgerPosting),
-		idempotency:  make(map[string]uuid.UUID),
+		postings:       make(map[uuid.UUID][]*LedgerPosting),
+		idempotency:    make(map[string]uuid.UUID),
 	}
 
 	// Seed system accounts for Sandbox

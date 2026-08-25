@@ -29,9 +29,9 @@ const (
 type MessageStatus string
 
 const (
-	StatusSent     MessageStatus = "sent"
+	StatusSent      MessageStatus = "sent"
 	StatusDelivered MessageStatus = "delivered"
-	StatusRead     MessageStatus = "read"
+	StatusRead      MessageStatus = "read"
 )
 
 // Conversation represents a chat thread (direct or group).

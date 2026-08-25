@@ -78,7 +78,7 @@ func (s *Service) seedSandboxDemoData() {
 		}
 		p2 := []*LedgerPosting{
 			{ID: uuid.New(), JournalEntryID: entry2.ID, AccountID: userAcc.ID, Amount: 30000, IsCredit: false, CreatedAt: entry2.CreatedAt}, // Debit user (+30,000)
-			{ID: uuid.New(), JournalEntryID: entry2.ID, AccountID: aminaAcc.ID, Amount: 30000, IsCredit: true, CreatedAt: entry2.CreatedAt},  // Credit Amina (-30,000)
+			{ID: uuid.New(), JournalEntryID: entry2.ID, AccountID: aminaAcc.ID, Amount: 30000, IsCredit: true, CreatedAt: entry2.CreatedAt}, // Credit Amina (-30,000)
 		}
 		_ = s.repo.PostJournalEntry(ctx, entry2, p2, "seed-tx-02")
 

@@ -2,7 +2,9 @@ package business
 
 import (
 	"context"
+	"errors"
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/google/uuid"
@@ -413,10 +415,435 @@ func (s *Service) GetBusinessAccount(ctx context.Context, businessID, requestUse
 
 	return &BusinessAccountDetail{
 		Account:          bizAcc,
-		LedgerAccount:   ledgerAcc,
+		LedgerAccount:    ledgerAcc,
 		AvailableBalance: balance,
-		PendingBalance:  0,
-		Currency:        bizAcc.Currency,
+		PendingBalance:   0,
+		Currency:         bizAcc.Currency,
+		IsSandbox:        true,
+	}, nil
+}
+
+// ════════════════════════════════════════════════
+// MERCHANT QR CODE METHODS (PHASE 3A.2)
+// ════════════════════════════════════════════════
+
+// CreateMerchantQR generates a new QR code identifying a business. Only OWNER and ADMIN can create a QR.
+func (s *Service) CreateMerchantQR(ctx context.Context, businessID, requestUserID uuid.UUID, req *CreateMerchantQRRequest) (*MerchantQR, error) {
+	biz, err := s.repo.GetBusiness(ctx, businessID)
+	if err != nil {
+		return nil, err
+	}
+
+	if biz.Status == StatusClosed {
+		return nil, ErrBusinessClosed
+	}
+	if biz.Status == StatusSuspended {
+		return nil, ErrBusinessSuspended
+	}
+
+	member, err := s.repo.GetMember(ctx, businessID, requestUserID)
+	if err != nil {
+		return nil, ErrUnauthorizedAccess
+	}
+
+	if member.Role != RoleOwner && member.Role != RoleAdmin {
+		return nil, ErrInsufficientPermission
+	}
+
+	code := ""
+	if req != nil && req.CustomCode != "" {
+		code = strings.TrimSpace(req.CustomCode)
+	} else {
+		// Standardized format: miigho://merchant/MG-{BUSINESS_SLUG}-{RANDOM}
+		slug := strings.ToUpper(strings.ReplaceAll(biz.DisplayName, " ", "-"))
+		if len(slug) > 12 {
+			slug = slug[:12]
+		}
+		code = fmt.Sprintf("miigho://merchant/MG-%s-%s", slug, uuid.New().String()[:6])
+	}
+
+	qr := &MerchantQR{
+		ID:         uuid.New(),
+		BusinessID: businessID,
+		Code:       code,
+		Status:     MerchantQRActive,
+		CreatedAt:  time.Now().UTC(),
+		UpdatedAt:  time.Now().UTC(),
+	}
+
+	if err := s.repo.CreateMerchantQR(ctx, qr); err != nil {
+		return nil, err
+	}
+
+	return qr, nil
+}
+
+// ResolveMerchantQR resolves a public QR code to sanitized business information.
+func (s *Service) ResolveMerchantQR(ctx context.Context, code string) (*PublicMerchantQRInfo, error) {
+	code = strings.TrimSpace(code)
+	qr, err := s.repo.GetMerchantQRByCode(ctx, code)
+	if err != nil {
+		return nil, ErrMerchantQRNotFound
+	}
+
+	if qr.Status == MerchantQRRevoked {
+		return nil, ErrMerchantQRRevoked
+	}
+	if qr.Status != MerchantQRActive {
+		return nil, ErrMerchantQRInvalid
+	}
+
+	biz, err := s.repo.GetBusiness(ctx, qr.BusinessID)
+	if err != nil {
+		return nil, err
+	}
+
+	if biz.Status == StatusClosed {
+		return nil, ErrBusinessClosed
+	}
+	if biz.Status == StatusSuspended {
+		return nil, ErrBusinessSuspended
+	}
+
+	return &PublicMerchantQRInfo{
+		BusinessID:   biz.ID,
+		DisplayName:  biz.DisplayName,
+		BusinessType: biz.BusinessType,
+		Country:      biz.Country,
+		Currency:     biz.Currency,
+		Status:       biz.Status,
+		QRCode:       qr.Code,
+	}, nil
+}
+
+// RevokeMerchantQR revokes a QR code so it can no longer be used for payments.
+func (s *Service) RevokeMerchantQR(ctx context.Context, businessID, requestUserID, qrID uuid.UUID) error {
+	biz, err := s.repo.GetBusiness(ctx, businessID)
+	if err != nil {
+		return err
+	}
+
+	if biz.Status == StatusClosed {
+		return ErrBusinessClosed
+	}
+
+	member, err := s.repo.GetMember(ctx, businessID, requestUserID)
+	if err != nil {
+		return ErrUnauthorizedAccess
+	}
+
+	if member.Role != RoleOwner && member.Role != RoleAdmin {
+		return ErrInsufficientPermission
+	}
+
+	qr, err := s.repo.GetMerchantQRByID(ctx, qrID)
+	if err != nil || qr.BusinessID != businessID {
+		return ErrMerchantQRNotFound
+	}
+
+	return s.repo.UpdateMerchantQRStatus(ctx, qrID, MerchantQRRevoked)
+}
+
+// GetMerchantQRs returns all QR codes for a given business.
+func (s *Service) GetMerchantQRs(ctx context.Context, businessID, requestUserID uuid.UUID) ([]*MerchantQR, error) {
+	biz, err := s.repo.GetBusiness(ctx, businessID)
+	if err != nil {
+		return nil, err
+	}
+
+	member, err := s.repo.GetMember(ctx, businessID, requestUserID)
+	if err != nil {
+		return nil, ErrUnauthorizedAccess
+	}
+
+	if !CanViewBusiness(member.Role, biz.Status) {
+		return nil, ErrInsufficientPermission
+	}
+
+	return s.repo.GetMerchantQRsByBusiness(ctx, businessID)
+}
+
+// ════════════════════════════════════════════════
+// PAYMENT INTENT & CONFIRMATION METHODS (PHASE 3A.2)
+// ════════════════════════════════════════════════
+
+// CreatePaymentIntent validates QR code and business details, creating an unconfirmed Payment Intent.
+// Note: 0 Ledger entries are created at this step.
+func (s *Service) CreatePaymentIntent(ctx context.Context, payerUserID uuid.UUID, req *CreatePaymentIntentRequest) (*PaymentIntent, error) {
+	if req.Amount <= 0 {
+		return nil, ledger.ErrInvalidAmount
+	}
+
+	// Idempotency check if idempotency key is provided
+	if req.IdempotencyKey != "" {
+		if existing, err := s.repo.GetPaymentIntentByIdempotencyKey(ctx, req.IdempotencyKey); err == nil {
+			if existing.Amount != req.Amount || existing.Currency != req.Currency {
+				return nil, fmt.Errorf("%w: existing amount=%d, requested amount=%d", ledger.ErrIdempotencyConflict, existing.Amount, req.Amount)
+			}
+			return existing, nil
+		}
+	}
+
+	// 1. Resolve QR Code
+	qr, err := s.repo.GetMerchantQRByCode(ctx, strings.TrimSpace(req.QRCode))
+	if err != nil {
+		return nil, ErrMerchantQRNotFound
+	}
+
+	if qr.Status == MerchantQRRevoked {
+		return nil, ErrMerchantQRRevoked
+	}
+	if qr.Status != MerchantQRActive {
+		return nil, ErrMerchantQRInvalid
+	}
+
+	// 2. Fetch Business & Validate Status
+	biz, err := s.repo.GetBusiness(ctx, qr.BusinessID)
+	if err != nil {
+		return nil, err
+	}
+
+	if biz.Status == StatusClosed {
+		return nil, ErrBusinessClosed
+	}
+	if biz.Status == StatusSuspended {
+		return nil, ErrBusinessSuspended
+	}
+	if biz.Status != StatusActive {
+		return nil, ErrInvalidStatus
+	}
+
+	// 3. Currency Validation
+	if req.Currency != "" && req.Currency != biz.Currency {
+		return nil, fmt.Errorf("%w: requested %s, business accepts %s", ErrCurrencyMismatch, req.Currency, biz.Currency)
+	}
+	currency := biz.Currency
+
+	// 4. Self-payment protection: Owner cannot pay their own business
+	if payerUserID == biz.OwnerUserID {
+		return nil, ErrSelfPaymentNotAllowed
+	}
+
+	// 5. Verify Business Account exists
+	_, err = s.repo.GetBusinessAccount(ctx, biz.ID)
+	if err != nil {
+		return nil, ErrBusinessAccountNotFound
+	}
+
+	// 6. Create Payment Intent
+	now := time.Now().UTC()
+	intent := &PaymentIntent{
+		ID:             uuid.New(),
+		BusinessID:     biz.ID,
+		PayerUserID:    payerUserID,
+		MerchantQRID:   &qr.ID,
+		Amount:         req.Amount,
+		Currency:       currency,
+		Status:         IntentCreated,
+		IdempotencyKey: req.IdempotencyKey,
+		CreatedAt:      now,
+		ExpiresAt:      now.Add(15 * time.Minute),
+	}
+
+	if err := s.repo.CreatePaymentIntent(ctx, intent); err != nil {
+		return nil, err
+	}
+
+	return intent, nil
+}
+
+// GetPaymentIntent retrieves a payment intent by ID, verifying authorization.
+func (s *Service) GetPaymentIntent(ctx context.Context, requestUserID, intentID uuid.UUID) (*PaymentIntent, error) {
+	intent, err := s.repo.GetPaymentIntent(ctx, intentID)
+	if err != nil {
+		return nil, err
+	}
+
+	// Authorization check: Only the payer or a member of the destination business can view the intent
+	if intent.PayerUserID != requestUserID {
+		if _, memberErr := s.repo.GetMember(ctx, intent.BusinessID, requestUserID); memberErr != nil {
+			return nil, ErrUnauthorizedAccess
+		}
+	}
+
+	return intent, nil
+}
+
+// ConfirmPaymentIntent executes the atomic double-entry ledger movement:
+// Client (Asset) CRÉDIT (-) | Business (Asset) DÉBIT (+)
+func (s *Service) ConfirmPaymentIntent(ctx context.Context, payerUserID, intentID uuid.UUID, req *ConfirmPaymentIntentRequest) (*MerchantPaymentReceipt, error) {
+	intent, err := s.repo.GetPaymentIntent(ctx, intentID)
+	if err != nil {
+		return nil, err
+	}
+
+	// 1. Authorization: Only the payer can confirm their own payment intent
+	if intent.PayerUserID != payerUserID {
+		return nil, ErrUnauthorizedAccess
+	}
+
+	// 2. Idempotency on already succeeded intent
+	if intent.Status == IntentSucceeded {
+		biz, _ := s.repo.GetBusiness(ctx, intent.BusinessID)
+		bizName := "Marchand"
+		if biz != nil {
+			bizName = biz.DisplayName
+		}
+		confirmedAt := time.Now().UTC()
+		if intent.ConfirmedAt != nil {
+			confirmedAt = *intent.ConfirmedAt
+		}
+		return &MerchantPaymentReceipt{
+			PaymentIntentID: intent.ID,
+			BusinessID:      intent.BusinessID,
+			BusinessName:    bizName,
+			PayerUserID:     intent.PayerUserID,
+			Amount:          intent.Amount,
+			Currency:        intent.Currency,
+			Status:          IntentSucceeded,
+			JournalEntryID:  intent.JournalEntryID,
+			ConfirmedAt:     confirmedAt,
+			IsSandbox:       true,
+		}, nil
+	}
+
+	// 3. Status validation
+	if intent.Status != IntentCreated && intent.Status != IntentConfirmed {
+		return nil, fmt.Errorf("%w: status is %s", ErrPaymentIntentInvalidStatus, intent.Status)
+	}
+
+	// 4. Expiration validation
+	now := time.Now().UTC()
+	if now.After(intent.ExpiresAt) {
+		_ = s.repo.UpdatePaymentIntentStatus(ctx, intent.ID, IntentExpired, nil, nil)
+		return nil, ErrPaymentIntentExpired
+	}
+
+	// 5. Business & Account validation
+	biz, err := s.repo.GetBusiness(ctx, intent.BusinessID)
+	if err != nil {
+		return nil, err
+	}
+	if biz.Status == StatusClosed {
+		_ = s.repo.UpdatePaymentIntentStatus(ctx, intent.ID, IntentFailed, nil, nil)
+		return nil, ErrBusinessClosed
+	}
+	if biz.Status == StatusSuspended {
+		_ = s.repo.UpdatePaymentIntentStatus(ctx, intent.ID, IntentFailed, nil, nil)
+		return nil, ErrBusinessSuspended
+	}
+	if biz.Status != StatusActive {
+		_ = s.repo.UpdatePaymentIntentStatus(ctx, intent.ID, IntentFailed, nil, nil)
+		return nil, ErrInvalidStatus
+	}
+
+	bizAcc, err := s.repo.GetBusinessAccount(ctx, biz.ID)
+	if err != nil {
+		_ = s.repo.UpdatePaymentIntentStatus(ctx, intent.ID, IntentFailed, nil, nil)
+		return nil, ErrBusinessAccountNotFound
+	}
+
+	// 6. Get or create Client Ledger Account
+	clientLedgerAcc, err := s.ledgerRepo.GetAccountByUserID(ctx, payerUserID, intent.Currency)
+	if err != nil {
+		clientLedgerAcc = &ledger.LedgerAccount{
+			ID:          uuid.New(),
+			UserID:      &payerUserID,
+			Currency:    intent.Currency,
+			AccountType: ledger.Asset,
+			Name:        "Portefeuille Principal",
+			CreatedAt:   now,
+		}
+		if createErr := s.ledgerRepo.CreateAccount(ctx, clientLedgerAcc); createErr != nil {
+			_ = s.repo.UpdatePaymentIntentStatus(ctx, intent.ID, IntentFailed, nil, nil)
+			return nil, createErr
+		}
+	}
+
+	// 7. Verify Client Funds via Ledger
+	clientBalance, err := s.ledgerRepo.GetBalance(ctx, clientLedgerAcc.ID)
+	if err != nil {
+		_ = s.repo.UpdatePaymentIntentStatus(ctx, intent.ID, IntentFailed, nil, nil)
+		return nil, err
+	}
+
+	if clientBalance < intent.Amount {
+		_ = s.repo.UpdatePaymentIntentStatus(ctx, intent.ID, IntentFailed, nil, nil)
+		return nil, fmt.Errorf("%w: available balance is %d, required %d", ErrPaymentFailed, clientBalance, intent.Amount)
+	}
+
+	// 8. Execute Atomic Double-Entry Ledger Movement
+	// Invariant: SUM(DR) == SUM(CR)
+	// Client: CRÉDIT (decrease Asset)
+	// Business: DÉBIT (increase Asset)
+	entryID := uuid.New()
+	ledgerRef := fmt.Sprintf("MERCHANT-PAY-%s", intent.ID.String())
+	ledgerIdempotencyKey := fmt.Sprintf("CONFIRM-INTENT-%s", intent.ID.String())
+
+	entry := &ledger.JournalEntry{
+		ID:              entryID,
+		TransactionType: ledger.MerchantPayment,
+		ReferenceID:     ledgerRef,
+		Description:     fmt.Sprintf("Paiement Marchand • %s", biz.DisplayName),
+		CreatedAt:       now,
+	}
+
+	postings := []*ledger.LedgerPosting{
+		{
+			ID:             uuid.New(),
+			JournalEntryID: entryID,
+			AccountID:      clientLedgerAcc.ID,
+			Amount:         intent.Amount,
+			IsCredit:       true, // Credit client asset (reduces balance)
+			CreatedAt:      now,
+		},
+		{
+			ID:             uuid.New(),
+			JournalEntryID: entryID,
+			AccountID:      bizAcc.LedgerAccountID,
+			Amount:         intent.Amount,
+			IsCredit:       false, // Debit business asset (increases balance)
+			CreatedAt:      now,
+		},
+	}
+
+	if err := s.ledgerRepo.PostJournalEntry(ctx, entry, postings, ledgerIdempotencyKey); err != nil {
+		if errors.Is(err, ledger.ErrDuplicateIdempotency) {
+			// Already posted under race condition, recover gracefully
+			_ = s.repo.UpdatePaymentIntentStatus(ctx, intent.ID, IntentSucceeded, &now, &entryID)
+			return &MerchantPaymentReceipt{
+				PaymentIntentID: intent.ID,
+				BusinessID:      biz.ID,
+				BusinessName:    biz.DisplayName,
+				PayerUserID:     payerUserID,
+				Amount:          intent.Amount,
+				Currency:        intent.Currency,
+				Status:          IntentSucceeded,
+				JournalEntryID:  &entryID,
+				ConfirmedAt:     now,
+				IsSandbox:       true,
+			}, nil
+		}
+
+		_ = s.repo.UpdatePaymentIntentStatus(ctx, intent.ID, IntentFailed, nil, nil)
+		return nil, fmt.Errorf("%w: %v", ErrPaymentFailed, err)
+	}
+
+	// 9. Update Payment Intent to SUCCEEDED
+	if err := s.repo.UpdatePaymentIntentStatus(ctx, intent.ID, IntentSucceeded, &now, &entryID); err != nil {
+		return nil, err
+	}
+
+	return &MerchantPaymentReceipt{
+		PaymentIntentID: intent.ID,
+		BusinessID:      biz.ID,
+		BusinessName:    biz.DisplayName,
+		PayerUserID:     payerUserID,
+		Amount:          intent.Amount,
+		Currency:        intent.Currency,
+		Status:          IntentSucceeded,
+		JournalEntryID:  &entryID,
+		ConfirmedAt:     now,
 		IsSandbox:       true,
 	}, nil
 }

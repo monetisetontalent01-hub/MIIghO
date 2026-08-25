@@ -12,7 +12,7 @@ import (
 	"github.com/miigho/miigho/internal/ledger"
 )
 
-// Repository defines data access operations for MÏÏghO Business Core.
+// Repository defines data access operations for MÏÏghO Business Core & Merchant Payments.
 type Repository interface {
 	CreateBusinessWithAccountAndOwner(ctx context.Context, business *Business, account *BusinessAccount, member *BusinessMember, ledgerAcc *ledger.LedgerAccount) error
 	GetBusiness(ctx context.Context, id uuid.UUID) (*Business, error)
@@ -26,27 +26,48 @@ type Repository interface {
 	RemoveMember(ctx context.Context, businessID, memberID uuid.UUID) error
 	GetBusinessAccount(ctx context.Context, businessID uuid.UUID) (*BusinessAccount, error)
 	GetBusinessAccountByLedgerID(ctx context.Context, ledgerAccountID uuid.UUID) (*BusinessAccount, error)
+
+	// Merchant QR Codes
+	CreateMerchantQR(ctx context.Context, qr *MerchantQR) error
+	GetMerchantQRByCode(ctx context.Context, code string) (*MerchantQR, error)
+	GetMerchantQRByID(ctx context.Context, id uuid.UUID) (*MerchantQR, error)
+	GetMerchantQRsByBusiness(ctx context.Context, businessID uuid.UUID) ([]*MerchantQR, error)
+	UpdateMerchantQRStatus(ctx context.Context, qrID uuid.UUID, status MerchantQRStatus) error
+
+	// Payment Intents
+	CreatePaymentIntent(ctx context.Context, intent *PaymentIntent) error
+	GetPaymentIntent(ctx context.Context, id uuid.UUID) (*PaymentIntent, error)
+	GetPaymentIntentByIdempotencyKey(ctx context.Context, key string) (*PaymentIntent, error)
+	UpdatePaymentIntentStatus(ctx context.Context, id uuid.UUID, status PaymentIntentStatus, confirmedAt *time.Time, journalEntryID *uuid.UUID) error
 }
 
 // MemoryBusinessRepository is an in-memory repository for sandbox and unit testing with full ACID-like locking.
 type MemoryBusinessRepository struct {
-	mu         sync.RWMutex
-	ledgerRepo ledger.Repository
-	businesses map[uuid.UUID]*Business
-	members    map[uuid.UUID]*BusinessMember                  // memberID -> member
-	bizMembers map[uuid.UUID]map[uuid.UUID]*BusinessMember    // bizID -> userID -> member
-	accounts   map[uuid.UUID]*BusinessAccount                 // bizID -> account
-	ledgerMap  map[uuid.UUID]*BusinessAccount                 // ledgerAccID -> account
+	mu             sync.RWMutex
+	ledgerRepo     ledger.Repository
+	businesses     map[uuid.UUID]*Business
+	members        map[uuid.UUID]*BusinessMember               // memberID -> member
+	bizMembers     map[uuid.UUID]map[uuid.UUID]*BusinessMember // bizID -> userID -> member
+	accounts       map[uuid.UUID]*BusinessAccount              // bizID -> account
+	ledgerMap      map[uuid.UUID]*BusinessAccount              // ledgerAccID -> account
+	qrCodesByID    map[uuid.UUID]*MerchantQR
+	qrCodesByCode  map[string]*MerchantQR
+	paymentIntents map[uuid.UUID]*PaymentIntent
+	intentsByIdemp map[string]*PaymentIntent
 }
 
 func NewMemoryBusinessRepository(ledgerRepo ledger.Repository) *MemoryBusinessRepository {
 	return &MemoryBusinessRepository{
-		ledgerRepo: ledgerRepo,
-		businesses: make(map[uuid.UUID]*Business),
-		members:    make(map[uuid.UUID]*BusinessMember),
-		bizMembers: make(map[uuid.UUID]map[uuid.UUID]*BusinessMember),
-		accounts:   make(map[uuid.UUID]*BusinessAccount),
-		ledgerMap:  make(map[uuid.UUID]*BusinessAccount),
+		ledgerRepo:     ledgerRepo,
+		businesses:     make(map[uuid.UUID]*Business),
+		members:        make(map[uuid.UUID]*BusinessMember),
+		bizMembers:     make(map[uuid.UUID]map[uuid.UUID]*BusinessMember),
+		accounts:       make(map[uuid.UUID]*BusinessAccount),
+		ledgerMap:      make(map[uuid.UUID]*BusinessAccount),
+		qrCodesByID:    make(map[uuid.UUID]*MerchantQR),
+		qrCodesByCode:  make(map[string]*MerchantQR),
+		paymentIntents: make(map[uuid.UUID]*PaymentIntent),
+		intentsByIdemp: make(map[string]*PaymentIntent),
 	}
 }
 
@@ -273,6 +294,138 @@ func (r *MemoryBusinessRepository) GetBusinessAccountByLedgerID(ctx context.Cont
 		return nil, ErrBusinessAccountNotFound
 	}
 	return acc, nil
+}
+
+// Merchant QR Codes (Memory)
+
+func (r *MemoryBusinessRepository) CreateMerchantQR(ctx context.Context, qr *MerchantQR) error {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+
+	if qr.ID == uuid.Nil {
+		qr.ID = uuid.New()
+	}
+	now := time.Now().UTC()
+	if qr.CreatedAt.IsZero() {
+		qr.CreatedAt = now
+	}
+	qr.UpdatedAt = now
+
+	r.qrCodesByID[qr.ID] = qr
+	r.qrCodesByCode[qr.Code] = qr
+	return nil
+}
+
+func (r *MemoryBusinessRepository) GetMerchantQRByCode(ctx context.Context, code string) (*MerchantQR, error) {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+
+	qr, ok := r.qrCodesByCode[code]
+	if !ok {
+		return nil, ErrMerchantQRNotFound
+	}
+	return qr, nil
+}
+
+func (r *MemoryBusinessRepository) GetMerchantQRByID(ctx context.Context, id uuid.UUID) (*MerchantQR, error) {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+
+	qr, ok := r.qrCodesByID[id]
+	if !ok {
+		return nil, ErrMerchantQRNotFound
+	}
+	return qr, nil
+}
+
+func (r *MemoryBusinessRepository) GetMerchantQRsByBusiness(ctx context.Context, businessID uuid.UUID) ([]*MerchantQR, error) {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+
+	var result []*MerchantQR
+	for _, qr := range r.qrCodesByID {
+		if qr.BusinessID == businessID {
+			result = append(result, qr)
+		}
+	}
+	return result, nil
+}
+
+func (r *MemoryBusinessRepository) UpdateMerchantQRStatus(ctx context.Context, qrID uuid.UUID, status MerchantQRStatus) error {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+
+	qr, ok := r.qrCodesByID[qrID]
+	if !ok {
+		return ErrMerchantQRNotFound
+	}
+	qr.Status = status
+	qr.UpdatedAt = time.Now().UTC()
+	return nil
+}
+
+// Payment Intents (Memory)
+
+func (r *MemoryBusinessRepository) CreatePaymentIntent(ctx context.Context, intent *PaymentIntent) error {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+
+	if intent.ID == uuid.Nil {
+		intent.ID = uuid.New()
+	}
+	now := time.Now().UTC()
+	if intent.CreatedAt.IsZero() {
+		intent.CreatedAt = now
+	}
+	if intent.ExpiresAt.IsZero() {
+		intent.ExpiresAt = now.Add(15 * time.Minute)
+	}
+
+	r.paymentIntents[intent.ID] = intent
+	if intent.IdempotencyKey != "" {
+		r.intentsByIdemp[intent.IdempotencyKey] = intent
+	}
+	return nil
+}
+
+func (r *MemoryBusinessRepository) GetPaymentIntent(ctx context.Context, id uuid.UUID) (*PaymentIntent, error) {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+
+	intent, ok := r.paymentIntents[id]
+	if !ok {
+		return nil, ErrPaymentIntentNotFound
+	}
+	return intent, nil
+}
+
+func (r *MemoryBusinessRepository) GetPaymentIntentByIdempotencyKey(ctx context.Context, key string) (*PaymentIntent, error) {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+
+	intent, ok := r.intentsByIdemp[key]
+	if !ok {
+		return nil, ErrPaymentIntentNotFound
+	}
+	return intent, nil
+}
+
+func (r *MemoryBusinessRepository) UpdatePaymentIntentStatus(ctx context.Context, id uuid.UUID, status PaymentIntentStatus, confirmedAt *time.Time, journalEntryID *uuid.UUID) error {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+
+	intent, ok := r.paymentIntents[id]
+	if !ok {
+		return ErrPaymentIntentNotFound
+	}
+	intent.Status = status
+	if confirmedAt != nil {
+		intent.ConfirmedAt = confirmedAt
+	}
+	if journalEntryID != nil {
+		intent.JournalEntryID = journalEntryID
+	}
+	return nil
 }
 
 // PostgresBusinessRepository provides PostgreSQL persistence for MÏÏghO Business Core.
@@ -615,4 +768,188 @@ func (r *PostgresBusinessRepository) GetBusinessAccountByLedgerID(ctx context.Co
 	}
 	acc.Status = BusinessAccountStatus(status)
 	return &acc, nil
+}
+
+// Merchant QR Codes (Postgres)
+
+func (r *PostgresBusinessRepository) CreateMerchantQR(ctx context.Context, qr *MerchantQR) error {
+	if qr.ID == uuid.Nil {
+		qr.ID = uuid.New()
+	}
+	now := time.Now().UTC()
+	if qr.CreatedAt.IsZero() {
+		qr.CreatedAt = now
+	}
+	qr.UpdatedAt = now
+
+	query := `
+		INSERT INTO merchant_qr_codes (id, business_id, code, status, created_at, updated_at)
+		VALUES ($1, $2, $3, $4, $5, $6)
+	`
+	_, err := r.pool.Exec(ctx, query, qr.ID, qr.BusinessID, qr.Code, string(qr.Status), qr.CreatedAt, qr.UpdatedAt)
+	return err
+}
+
+func (r *PostgresBusinessRepository) GetMerchantQRByCode(ctx context.Context, code string) (*MerchantQR, error) {
+	query := `
+		SELECT id, business_id, code, status, created_at, updated_at
+		FROM merchant_qr_codes
+		WHERE code = $1
+	`
+	var qr MerchantQR
+	var status string
+	err := r.pool.QueryRow(ctx, query, code).Scan(&qr.ID, &qr.BusinessID, &qr.Code, &status, &qr.CreatedAt, &qr.UpdatedAt)
+	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return nil, ErrMerchantQRNotFound
+		}
+		return nil, err
+	}
+	qr.Status = MerchantQRStatus(status)
+	return &qr, nil
+}
+
+func (r *PostgresBusinessRepository) GetMerchantQRByID(ctx context.Context, id uuid.UUID) (*MerchantQR, error) {
+	query := `
+		SELECT id, business_id, code, status, created_at, updated_at
+		FROM merchant_qr_codes
+		WHERE id = $1
+	`
+	var qr MerchantQR
+	var status string
+	err := r.pool.QueryRow(ctx, query, id).Scan(&qr.ID, &qr.BusinessID, &qr.Code, &status, &qr.CreatedAt, &qr.UpdatedAt)
+	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return nil, ErrMerchantQRNotFound
+		}
+		return nil, err
+	}
+	qr.Status = MerchantQRStatus(status)
+	return &qr, nil
+}
+
+func (r *PostgresBusinessRepository) GetMerchantQRsByBusiness(ctx context.Context, businessID uuid.UUID) ([]*MerchantQR, error) {
+	query := `
+		SELECT id, business_id, code, status, created_at, updated_at
+		FROM merchant_qr_codes
+		WHERE business_id = $1
+		ORDER BY created_at DESC
+	`
+	rows, err := r.pool.Query(ctx, query, businessID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var qrs []*MerchantQR
+	for rows.Next() {
+		var qr MerchantQR
+		var status string
+		if err := rows.Scan(&qr.ID, &qr.BusinessID, &qr.Code, &status, &qr.CreatedAt, &qr.UpdatedAt); err != nil {
+			return nil, err
+		}
+		qr.Status = MerchantQRStatus(status)
+		qrs = append(qrs, &qr)
+	}
+	return qrs, nil
+}
+
+func (r *PostgresBusinessRepository) UpdateMerchantQRStatus(ctx context.Context, qrID uuid.UUID, status MerchantQRStatus) error {
+	query := `
+		UPDATE merchant_qr_codes
+		SET status = $1, updated_at = $2
+		WHERE id = $3
+	`
+	tag, err := r.pool.Exec(ctx, query, string(status), time.Now().UTC(), qrID)
+	if err != nil {
+		return err
+	}
+	if tag.RowsAffected() == 0 {
+		return ErrMerchantQRNotFound
+	}
+	return nil
+}
+
+// Payment Intents (Postgres)
+
+func (r *PostgresBusinessRepository) CreatePaymentIntent(ctx context.Context, intent *PaymentIntent) error {
+	if intent.ID == uuid.Nil {
+		intent.ID = uuid.New()
+	}
+	now := time.Now().UTC()
+	if intent.CreatedAt.IsZero() {
+		intent.CreatedAt = now
+	}
+	if intent.ExpiresAt.IsZero() {
+		intent.ExpiresAt = now.Add(15 * time.Minute)
+	}
+
+	query := `
+		INSERT INTO payment_intents (id, business_id, payer_user_id, merchant_qr_id, amount, currency, status, idempotency_key, created_at, expires_at, confirmed_at, journal_entry_id)
+		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
+	`
+	_, err := r.pool.Exec(ctx, query, intent.ID, intent.BusinessID, intent.PayerUserID, intent.MerchantQRID, intent.Amount, intent.Currency, string(intent.Status), intent.IdempotencyKey, intent.CreatedAt, intent.ExpiresAt, intent.ConfirmedAt, intent.JournalEntryID)
+	return err
+}
+
+func (r *PostgresBusinessRepository) GetPaymentIntent(ctx context.Context, id uuid.UUID) (*PaymentIntent, error) {
+	query := `
+		SELECT id, business_id, payer_user_id, merchant_qr_id, amount, currency, status, idempotency_key, created_at, expires_at, confirmed_at, journal_entry_id
+		FROM payment_intents
+		WHERE id = $1
+	`
+	var intent PaymentIntent
+	var status string
+	err := r.pool.QueryRow(ctx, query, id).Scan(
+		&intent.ID, &intent.BusinessID, &intent.PayerUserID, &intent.MerchantQRID,
+		&intent.Amount, &intent.Currency, &status, &intent.IdempotencyKey,
+		&intent.CreatedAt, &intent.ExpiresAt, &intent.ConfirmedAt, &intent.JournalEntryID,
+	)
+	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return nil, ErrPaymentIntentNotFound
+		}
+		return nil, err
+	}
+	intent.Status = PaymentIntentStatus(status)
+	return &intent, nil
+}
+
+func (r *PostgresBusinessRepository) GetPaymentIntentByIdempotencyKey(ctx context.Context, key string) (*PaymentIntent, error) {
+	query := `
+		SELECT id, business_id, payer_user_id, merchant_qr_id, amount, currency, status, idempotency_key, created_at, expires_at, confirmed_at, journal_entry_id
+		FROM payment_intents
+		WHERE idempotency_key = $1
+	`
+	var intent PaymentIntent
+	var status string
+	err := r.pool.QueryRow(ctx, query, key).Scan(
+		&intent.ID, &intent.BusinessID, &intent.PayerUserID, &intent.MerchantQRID,
+		&intent.Amount, &intent.Currency, &status, &intent.IdempotencyKey,
+		&intent.CreatedAt, &intent.ExpiresAt, &intent.ConfirmedAt, &intent.JournalEntryID,
+	)
+	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return nil, ErrPaymentIntentNotFound
+		}
+		return nil, err
+	}
+	intent.Status = PaymentIntentStatus(status)
+	return &intent, nil
+}
+
+func (r *PostgresBusinessRepository) UpdatePaymentIntentStatus(ctx context.Context, id uuid.UUID, status PaymentIntentStatus, confirmedAt *time.Time, journalEntryID *uuid.UUID) error {
+	query := `
+		UPDATE payment_intents
+		SET status = $1, confirmed_at = $2, journal_entry_id = $3
+		WHERE id = $4
+	`
+	tag, err := r.pool.Exec(ctx, query, string(status), confirmedAt, journalEntryID, id)
+	if err != nil {
+		return err
+	}
+	if tag.RowsAffected() == 0 {
+		return ErrPaymentIntentNotFound
+	}
+	return nil
 }

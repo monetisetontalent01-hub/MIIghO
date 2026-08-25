@@ -27,12 +27,12 @@ const (
 
 // DetailedJournalEntry contains a JournalEntry and all its associated postings with account names.
 type DetailedJournalEntry struct {
-	Entry    *JournalEntry           `json:"entry"`
-	Status   TransactionStatus       `json:"status"`
-	Postings []*DetailedLedgerPosting `json:"postings"`
-	TotalDebit  int64               `json:"total_debit"`
-	TotalCredit int64               `json:"total_credit"`
-	IsBalanced  bool                `json:"is_balanced"`
+	Entry       *JournalEntry            `json:"entry"`
+	Status      TransactionStatus        `json:"status"`
+	Postings    []*DetailedLedgerPosting `json:"postings"`
+	TotalDebit  int64                    `json:"total_debit"`
+	TotalCredit int64                    `json:"total_credit"`
+	IsBalanced  bool                     `json:"is_balanced"`
 }
 
 // DetailedLedgerPosting extends LedgerPosting with account name, direction, and formatted currency.

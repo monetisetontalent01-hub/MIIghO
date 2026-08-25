@@ -32,7 +32,7 @@ func AuthMiddleware(valkeyClient *cache.ValkeyClient, pgPool *pgxpool.Pool) echo
 			// 1. Check in Valkey cache (fast path)
 			// 2. If not in cache, verify hash in Postgres and hydrate cache (slow path)
 			// Mocked validation for MVP:
-			
+
 			// Assume token is valid UUID for mocking identity extraction
 			userID, err := uuid.Parse(token)
 			if err != nil {

@@ -28,6 +28,7 @@ const (
 	MarketplaceEscrow  TransactionType = "marketplace_escrow"
 	MarketplaceRelease TransactionType = "marketplace_release"
 	Fee                TransactionType = "fee"
+	MerchantPayment    TransactionType = "merchant_payment"
 )
 
 // LedgerAccount represents an account in the double-entry system.

@@ -15,13 +15,13 @@ type Config struct {
 	}
 
 	Database struct {
-		Host            string `envconfig:"DB_HOST" default:"localhost"`
-		Port            int    `envconfig:"DB_PORT" default:"5432"`
-		User            string `envconfig:"DB_USER" default:"postgres"`
-		Password        string `envconfig:"DB_PASSWORD" default:"postgres"`
-		DBName          string `envconfig:"DB_NAME" default:"miigho"`
-		MaxConns        int32  `envconfig:"DB_MAX_CONNS" default:"20"`
-		SSLMode         string `envconfig:"DB_SSLMODE" default:"disable"`
+		Host     string `envconfig:"DB_HOST" default:"localhost"`
+		Port     int    `envconfig:"DB_PORT" default:"5432"`
+		User     string `envconfig:"DB_USER" default:"postgres"`
+		Password string `envconfig:"DB_PASSWORD" default:"postgres"`
+		DBName   string `envconfig:"DB_NAME" default:"miigho"`
+		MaxConns int32  `envconfig:"DB_MAX_CONNS" default:"20"`
+		SSLMode  string `envconfig:"DB_SSLMODE" default:"disable"`
 	}
 
 	Valkey struct {

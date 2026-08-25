@@ -21,10 +21,10 @@ type SMSProvider interface {
 
 // AuthService contains business logic for authentication.
 type AuthService struct {
-	repo         AuthRepository
-	valkey       *cache.ValkeyClient
-	smsProvider  SMSProvider
-	config       *config.Config
+	repo        AuthRepository
+	valkey      *cache.ValkeyClient
+	smsProvider SMSProvider
+	config      *config.Config
 }
 
 func NewAuthService(repo AuthRepository, valkey *cache.ValkeyClient, sms SMSProvider, cfg *config.Config) *AuthService {

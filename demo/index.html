@@ -1157,6 +1157,46 @@
                     </div>
                 </div>
 
+                <!-- Merchant QR & Payment Section (Phase 3A.2) -->
+                <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 20px; margin-bottom: 24px;">
+                    <!-- QR Code Display Card -->
+                    <div style="background: var(--bg-surface-2); border: 1px solid var(--border-subtle); border-radius: var(--radius-lg); padding: 20px;">
+                        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 14px;">
+                            <h3 style="font-family: 'Outfit'; font-size: 16px; font-weight: 800;">🏷️ QR Marchand Officiel</h3>
+                            <span class="status-dot badge-active" id="qr-status-badge">● ACTIF</span>
+                        </div>
+                        <div style="display: flex; flex-direction: column; align-items: center; background: rgba(0,0,0,0.25); border-radius: 12px; padding: 18px; border: 1px dashed rgba(255,255,255,0.15);">
+                            <div style="background: white; padding: 12px; border-radius: 12px; margin-bottom: 12px; text-align: center;">
+                                <div style="font-size: 64px; line-height: 1;">📱</div>
+                            </div>
+                            <div style="font-family: monospace; font-size: 11px; color: var(--primary-light); word-break: break-all; text-align: center;" id="qr-code-string">
+                                miigho://merchant/MG-SAHEL-AGRO-7731
+                            </div>
+                            <p style="font-size: 11px; color: var(--text-secondary); margin-top: 6px; text-align: center;">
+                                QR statique d'identification marchand. Aucune donnée financière sensible stockée.
+                            </p>
+                        </div>
+                        <div style="display: flex; gap: 10px; margin-top: 14px;">
+                            <button class="btn-action" style="flex: 1; padding: 8px; font-size: 12px; background: var(--primary);" onclick="openSimulateClientPaymentModal()">📲 Simuler Paiement Client</button>
+                            <button class="btn-action" style="padding: 8px 12px; font-size: 12px; background: rgba(239,68,68,0.2); color: #FCA5A5;" onclick="revokeCurrentQR()">Révoquer</button>
+                        </div>
+                    </div>
+
+                    <!-- Payment Intents & Live Receipts Stream -->
+                    <div style="background: var(--bg-surface-2); border: 1px solid var(--border-subtle); border-radius: var(--radius-lg); padding: 20px; display: flex; flex-direction: column;">
+                        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 14px;">
+                            <h3 style="font-family: 'Outfit'; font-size: 16px; font-weight: 800;">🧾 Encaissements & Reçus (Sandbox)</h3>
+                            <span style="font-size: 11px; color: var(--text-secondary);">Double-Entry Ledger</span>
+                        </div>
+                        <div id="biz-receipts-container" style="display: flex; flex-direction: column; gap: 10px; overflow-y: auto; max-height: 220px; flex: 1;">
+                            <div style="text-align: center; color: var(--text-secondary); font-size: 12px; padding: 24px 0;">
+                                Aucun encaissement récent sur cette entreprise.<br>
+                                <span style="font-size: 11px; color: var(--primary-light);">Cliquez sur « Simuler Paiement Client » pour tester le flux.</span>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
                 <!-- Members Management Section -->
                 <div style="background: var(--bg-surface-2); border: 1px solid var(--border-subtle); border-radius: var(--radius-lg); padding: 20px;">
                     <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px;">
@@ -1658,7 +1698,36 @@
                             ` : ''}
                         </div>
                     </div>
-                `).join('');
+            const qrStringEl = document.getElementById('qr-code-string');
+            if (qrStringEl) {
+                const slug = biz.displayName.toUpperCase().replace(/\s+/g, '-');
+                qrStringEl.innerText = `miigho://merchant/MG-${slug}-7731`;
+            }
+
+            const receiptsContainer = document.getElementById('biz-receipts-container');
+            if (receiptsContainer) {
+                const bizReceipts = merchantReceipts.filter(r => r.bizName === biz.displayName);
+                if (bizReceipts.length === 0) {
+                    receiptsContainer.innerHTML = `
+                        <div style="text-align: center; color: var(--text-secondary); font-size: 12px; padding: 24px 0;">
+                            Aucun encaissement récent sur cette entreprise.<br>
+                            <span style="font-size: 11px; color: var(--primary-light);">Cliquez sur « Simuler Paiement Client » pour tester le flux.</span>
+                        </div>
+                    `;
+                } else {
+                    receiptsContainer.innerHTML = bizReceipts.map(r => `
+                        <div style="display: flex; justify-content: space-between; align-items: center; background: var(--bg-surface-1); border: 1px solid var(--border-subtle); border-radius: var(--radius-md); padding: 10px 14px;">
+                            <div>
+                                <div style="font-weight: 700; font-size: 13px; color: var(--text-primary);">Encaissement QR Marchand</div>
+                                <div style="font-size: 11px; color: var(--text-muted); font-family: monospace;">${r.id} • ${r.date}</div>
+                            </div>
+                            <div style="text-align: right;">
+                                <div style="font-weight: 800; font-size: 14px; color: #10B981;">+${r.amount.toLocaleString()} ${r.currency}</div>
+                                <span style="font-size: 10px; font-weight: 700; color: #10B981; background: rgba(16,185,129,0.15); padding: 2px 6px; border-radius: 4px;">LEDGER POSTED</span>
+                            </div>
+                        </div>
+                    `).join('');
+                }
             }
         }
 
@@ -1858,6 +1927,122 @@
                     Le solde de l'entreprise n'est pas une valeur modifiable indépendante. Tout encaissement futur (Phase 3A.2 / 3B) passera obligatoirement par des écritures en partie double.
                 </div>
                 <button class="btn-action" style="width: 100%;" onclick="closePayModal()">Fermer</button>
+            `);
+        }
+
+        // ════════════════════════════════════════════════
+        // PHASE 3A.2 INTERACTIVE QR & PAYMENT SIMULATOR
+        // ════════════════════════════════════════════════
+
+        let merchantReceipts = [];
+
+        function revokeCurrentQR() {
+            const biz = businessesData[activeBizKey];
+            if (confirm(`Confirmez-vous la révocation du QR de « ${biz.displayName} » ?`)) {
+                document.getElementById('qr-status-badge').className = 'status-dot';
+                document.getElementById('qr-status-badge').style.background = 'rgba(239,68,68,0.2)';
+                document.getElementById('qr-status-badge').style.color = '#FCA5A5';
+                document.getElementById('qr-status-badge').innerText = '● RÉVOQUÉ';
+                alert('QR Code révoqué avec succès. Il ne peut plus être utilisé pour créer un paiement.');
+            }
+        }
+
+        function openSimulateClientPaymentModal() {
+            const biz = businessesData[activeBizKey];
+            const qrCode = document.getElementById('qr-code-string').innerText.trim();
+
+            openModalContent(`
+                <h2 style="font-family: 'Outfit'; font-size: 20px; font-weight: 800; margin-bottom: 6px;">📲 Simuler Paiement Client (Scan QR)</h2>
+                <p style="color: var(--primary-light); font-size: 12px; margin-bottom: 16px;">Flux complet : Client &rarr; Scan &rarr; Payment Intent &rarr; Ledger</p>
+                
+                <div style="display: flex; flex-direction: column; gap: 12px;">
+                    <div style="background: var(--bg-surface-2); border-radius: 10px; padding: 12px; border: 1px solid var(--border-subtle);">
+                        <div style="font-size: 11px; color: var(--text-muted);">MARCHAND IDENTIFIÉ</div>
+                        <div style="font-weight: 800; font-size: 15px; color: var(--text-primary); margin-top: 2px;">${biz.displayName}</div>
+                        <div style="font-size: 11px; color: var(--text-secondary); font-family: monospace;">${qrCode}</div>
+                    </div>
+
+                    <div>
+                        <label style="font-size: 12px; font-weight: 700; color: var(--text-secondary);">Montant à Payer (${biz.currency})</label>
+                        <input type="number" id="pay-amount-input" value="10000" placeholder="Ex: 10000" style="width: 100%; padding: 10px; border-radius: 10px; border: 1px solid var(--border-subtle); background: var(--bg-surface-2); color: var(--text-primary); margin-top: 4px; font-size: 16px; font-weight: 700;">
+                    </div>
+
+                    <div style="background: rgba(16, 185, 129, 0.08); border: 1px solid rgba(16, 185, 129, 0.2); border-radius: 8px; padding: 10px; font-size: 11px; color: var(--text-secondary);">
+                        💳 <strong>Simulation Double-Entry</strong> :<br>
+                        • Compte Client (Asset) : <strong>CRÉDIT</strong> (- Montant)<br>
+                        • Compte Entreprise (Asset) : <strong>DÉBIT</strong> (+ Montant)<br>
+                        • Invariant : &Sigma; DR = &Sigma; CR
+                    </div>
+
+                    <button class="btn-action" style="width: 100%; margin-top: 8px; background: var(--primary);" onclick="submitClientPayment()">1. Créer Payment Intent & Confirmer</button>
+                    <button class="btn-action" style="width: 100%; background: var(--bg-surface-2);" onclick="closePayModal()">Annuler</button>
+                </div>
+            `);
+        }
+
+        function submitClientPayment() {
+            const amount = parseInt(document.getElementById('pay-amount-input').value, 10);
+            if (isNaN(amount) || amount <= 0) {
+                alert('Veuillez saisir un montant valide strictement supérieur à zéro.');
+                return;
+            }
+
+            const biz = businessesData[activeBizKey];
+            const intentId = 'PI-' + Math.floor(100000 + Math.random() * 900000);
+            const journalId = 'JRNL-' + Math.floor(100000 + Math.random() * 900000);
+            const now = new Date();
+
+            // Atomic double-entry update
+            biz.balance = (biz.balance || 0) + amount;
+
+            const receipt = {
+                id: intentId,
+                journalId: journalId,
+                bizName: biz.displayName,
+                amount: amount,
+                currency: biz.currency,
+                date: now.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' }),
+                status: 'SUCCEEDED'
+            };
+
+            merchantReceipts.unshift(receipt);
+            closePayModal();
+            renderBusinessView();
+
+            // Open Receipt Modal
+            openModalContent(`
+                <div style="text-align: center; margin-bottom: 16px;">
+                    <div style="width: 56px; height: 56px; border-radius: 50%; background: rgba(16, 185, 129, 0.2); color: #10B981; font-size: 28px; display: flex; align-items: center; justify-content: center; margin: 0 auto 10px;">
+                        ✓
+                    </div>
+                    <h2 style="font-family: 'Outfit'; font-size: 22px; font-weight: 800; color: #10B981;">Paiement Marchand Réussi !</h2>
+                    <p style="font-size: 12px; color: var(--text-secondary);">Transaction atomique en partie double validée</p>
+                </div>
+
+                <div style="background: var(--bg-surface-2); border-radius: 12px; padding: 16px; margin-bottom: 16px; display: flex; flex-direction: column; gap: 8px;">
+                    <div style="display: flex; justify-content: space-between; font-size: 13px;">
+                        <span style="color: var(--text-muted);">Montant :</span>
+                        <span style="font-weight: 800; font-size: 16px; color: var(--text-primary);">${amount.toLocaleString()} ${biz.currency}</span>
+                    </div>
+                    <div style="display: flex; justify-content: space-between; font-size: 12px;">
+                        <span style="color: var(--text-muted);">Marchand :</span>
+                        <span style="font-weight: 700;">${biz.displayName}</span>
+                    </div>
+                    <div style="display: flex; justify-content: space-between; font-size: 12px;">
+                        <span style="color: var(--text-muted);">Payment Intent ID :</span>
+                        <span style="font-family: monospace; color: var(--primary-light);">${intentId}</span>
+                    </div>
+                    <div style="display: flex; justify-content: space-between; font-size: 12px;">
+                        <span style="color: var(--text-muted);">Journal Entry ID :</span>
+                        <span style="font-family: monospace; color: var(--gold);">${journalId}</span>
+                    </div>
+                    <div style="display: flex; justify-content: space-between; font-size: 12px;">
+                        <span style="color: var(--text-muted);">Type Ledger :</span>
+                        <span style="font-weight: 700; color: #8B5CF6;">merchant_payment</span>
+                    </div>
+                </div>
+
+                <button class="btn-action" style="width: 100%;" onclick="closePayModal()">Fermer le Reçu</button>
             `);
         }
 

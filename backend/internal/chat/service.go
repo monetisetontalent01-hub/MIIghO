@@ -10,9 +10,9 @@ import (
 )
 
 type ChatService struct {
-	repo         ChatRepository
-	eventBus     events.EventBus
-	encryption   encryption.EncryptionService
+	repo       ChatRepository
+	eventBus   events.EventBus
+	encryption encryption.EncryptionService
 }
 
 func NewChatService(repo ChatRepository, eb events.EventBus, enc encryption.EncryptionService) *ChatService {
