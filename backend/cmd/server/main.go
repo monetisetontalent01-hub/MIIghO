@@ -14,6 +14,7 @@ import (
 	"github.com/rs/zerolog"
 
 	"github.com/miigho/miigho/internal/auth"
+	"github.com/miigho/miigho/internal/business"
 	"github.com/miigho/miigho/internal/chat"
 	"github.com/miigho/miigho/internal/common"
 	"github.com/miigho/miigho/internal/config"
@@ -95,6 +96,7 @@ func main() {
 	contactRepo := contact.NewPostgresContactRepository(pgPool)
 	chatRepo := chat.NewPostgresChatRepository(pgPool)
 	ledgerRepo := ledger.NewPostgresRepository(pgPool)
+	businessRepo := business.NewPostgresBusinessRepository(pgPool, ledgerRepo)
 
 	// Initialize domain services
 	smsProvider := &DevSMSProvider{logger: logger}
@@ -105,6 +107,7 @@ func main() {
 	encService := &encryption.PassthroughEncryption{}
 	chatService := chat.NewChatService(chatRepo, eventBus, encService)
 	ledgerService := ledger.NewService(ledgerRepo)
+	businessService := business.NewService(businessRepo, ledgerRepo)
 
 	// Initialize WebSocket hub for real-time messaging
 	hub := chat.NewHub()
@@ -118,6 +121,7 @@ func main() {
 	chatHandler := chat.NewChatHandler(chatService)
 	mediaHandler := media.NewMediaHandler(mediaService)
 	ledgerHandler := ledger.NewHandler(ledgerService)
+	businessHandler := business.NewHandler(businessService, validator)
 
 	// Initialize Echo router
 	e := echo.New()
@@ -160,6 +164,7 @@ func main() {
 	chatHandler.RegisterRoutes(apiV1, authMiddleware)
 	mediaHandler.RegisterRoutes(apiV1, authMiddleware)
 	ledgerHandler.RegisterRoutes(apiV1, authMiddleware)
+	businessHandler.RegisterRoutes(apiV1, authMiddleware)
 
 	// Start server in a goroutine
 	serverAddr := fmt.Sprintf("%s:%s", cfg.Server.Host, cfg.Server.Port)
