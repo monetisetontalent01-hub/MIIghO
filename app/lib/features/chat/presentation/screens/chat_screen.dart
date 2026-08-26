@@ -498,6 +498,14 @@ class _ChatScreenState extends State<ChatScreen> {
                   onSendMessage: _handleSendMessage,
                   onSendVoice: _handleSendVoice,
                   onSendMedia: _handleSendMedia,
+                  onTypingChanged: (isTyping) {
+                    context.read<ChatBloc>().add(
+                          SendTypingEvent(
+                            conversationId: widget.conversationId,
+                            isTyping: isTyping,
+                          ),
+                        );
+                  },
                   replyData: _replyData,
                   onCancelReply: () {
                     setState(() {

@@ -35,6 +35,17 @@ func (s *ChatService) IsMember(ctx context.Context, convID, userID uuid.UUID) (b
 	return s.repo.IsMember(ctx, convID, userID)
 }
 
+func (s *ChatService) GetConversation(ctx context.Context, convID, userID uuid.UUID) (*Conversation, error) {
+	isMember, err := s.repo.IsMember(ctx, convID, userID)
+	if err != nil {
+		return nil, err
+	}
+	if !isMember {
+		return nil, common.ErrForbidden
+	}
+	return s.repo.GetConversation(ctx, convID)
+}
+
 func (s *ChatService) CreateDirectConversation(ctx context.Context, userA, userB uuid.UUID) (*Conversation, error) {
 	conv, err := s.repo.CreateDirectConversation(ctx, userA, userB)
 	if err != nil {

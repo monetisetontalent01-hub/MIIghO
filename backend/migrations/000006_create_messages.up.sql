@@ -6,6 +6,7 @@ CREATE TABLE messages (
     content TEXT,
     metadata JSONB,
     reply_to UUID,
+    edited_at TIMESTAMPTZ,
     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     deleted_at TIMESTAMPTZ,

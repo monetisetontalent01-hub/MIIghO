@@ -99,10 +99,34 @@ class _NewChatDialogState extends State<NewChatDialog> {
                 }
 
                 if (contacts.isEmpty) {
+                  final isDirectId = _filter.isNotEmpty;
                   return Center(
-                    child: Text(
-                      'Aucun contact MÏÏghO trouvé',
-                      style: TextStyle(color: isDark ? MiighoColors.textMuted : MiighoColors.lightTextMuted),
+                    child: Column(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        Text(
+                          'Aucun contact MÏÏghO dans votre carnet',
+                          style: TextStyle(color: isDark ? MiighoColors.textMuted : MiighoColors.lightTextMuted),
+                        ),
+                        if (isDirectId) ...[
+                          const SizedBox(height: 16),
+                          ElevatedButton.icon(
+                            onPressed: () {
+                              Navigator.of(context).pop();
+                              widget.onContactSelected(
+                                Contact(
+                                  id: _searchController.text.trim(),
+                                  displayName: _searchController.text.trim(),
+                                  phoneNumber: _searchController.text.trim(),
+                                  isRegistered: true,
+                                ),
+                              );
+                            },
+                            icon: const Icon(Icons.send_rounded, size: 16),
+                            label: Text('Discuter avec "${_searchController.text.trim()}"'),
+                          ),
+                        ],
+                      ],
                     ),
                   );
                 }

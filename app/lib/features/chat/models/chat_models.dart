@@ -98,6 +98,7 @@ class MiighoMessageItem {
   final MessageDeliveryStatus status;
   final DateTime timestamp;
   final DateTime? editedAt;
+  final String? replyToId;
   final String? mediaPath;
   final String? mediaUrl;
   final String? mediaFileName;
@@ -115,6 +116,7 @@ class MiighoMessageItem {
     this.status = MessageDeliveryStatus.sent,
     required this.timestamp,
     this.editedAt,
+    this.replyToId,
     this.mediaPath,
     this.mediaUrl,
     this.mediaFileName,
@@ -197,6 +199,9 @@ class MiighoMessageItem {
       }).toList();
     }
 
+    // Parse reply_to
+    final replyToId = json['reply_to'] as String? ?? json['reply_to_id'] as String?;
+
     // Parse metadata
     final metadata = json['metadata'] as Map<String, dynamic>?;
     final mediaUrl = metadata?['media_url'] as String? ?? json['media_url'] as String?;
@@ -204,15 +209,18 @@ class MiighoMessageItem {
     final mediaFileSize = metadata?['file_size'] as int?;
     final durationSeconds = metadata?['duration_seconds'] as int?;
 
+    String contentStr = json['content'] as String? ?? '';
+
     return MiighoMessageItem(
       id: json['id'] as String,
       conversationId: json['conversation_id'] as String? ?? '',
-      content: json['content'] as String? ?? '',
+      content: contentStr,
       isMe: isMe,
       type: msgType,
       status: msgStatus,
       timestamp: json['created_at'] != null ? DateTime.parse(json['created_at']) : DateTime.now(),
       editedAt: json['edited_at'] != null ? DateTime.parse(json['edited_at']) : null,
+      replyToId: replyToId,
       mediaUrl: mediaUrl,
       mediaFileName: mediaFileName,
       mediaFileSize: mediaFileSize,
@@ -230,6 +238,7 @@ class MiighoMessageItem {
     MessageDeliveryStatus? status,
     DateTime? timestamp,
     DateTime? editedAt,
+    String? replyToId,
     String? mediaPath,
     String? mediaUrl,
     String? mediaFileName,
@@ -247,6 +256,7 @@ class MiighoMessageItem {
       status: status ?? this.status,
       timestamp: timestamp ?? this.timestamp,
       editedAt: editedAt ?? this.editedAt,
+      replyToId: replyToId ?? this.replyToId,
       mediaPath: mediaPath ?? this.mediaPath,
       mediaUrl: mediaUrl ?? this.mediaUrl,
       mediaFileName: mediaFileName ?? this.mediaFileName,

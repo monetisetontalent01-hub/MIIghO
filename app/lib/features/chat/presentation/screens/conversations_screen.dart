@@ -30,6 +30,12 @@ class _ConversationsScreenState extends State<ConversationsScreen> {
   String _selectedFilter = 'all'; // 'all', 'unread', 'groups'
 
   @override
+  void initState() {
+    super.initState();
+    context.read<ChatBloc>().add(LoadConversations());
+  }
+
+  @override
   void dispose() {
     _searchController.dispose();
     super.dispose();
@@ -158,37 +164,38 @@ class _ConversationsScreenState extends State<ConversationsScreen> {
                   return const Center(child: CircularProgressIndicator());
                 }
 
+                if (state is ChatError) {
+                  return Center(
+                    child: Padding(
+                      padding: const EdgeInsets.all(24.0),
+                      child: Column(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                          Icon(Icons.error_outline_rounded, size: 48, color: Colors.redAccent.withValues(alpha: 0.8)),
+                          const SizedBox(height: 12),
+                          Text(
+                            state.message,
+                            textAlign: TextAlign.center,
+                            style: TextStyle(
+                              fontSize: 14,
+                              color: isDark ? MiighoColors.textSecondary : MiighoColors.lightTextSecondary,
+                            ),
+                          ),
+                          const SizedBox(height: 16),
+                          ElevatedButton.icon(
+                            onPressed: () => context.read<ChatBloc>().add(LoadConversations()),
+                            icon: const Icon(Icons.refresh_rounded, size: 18),
+                            label: const Text('Réessayer'),
+                          ),
+                        ],
+                      ),
+                    ),
+                  );
+                }
+
                 List<MiighoConversation> conversations = [];
                 if (state is ConversationsLoaded) {
                   conversations = state.conversations;
-                } else {
-                  conversations = [
-                    MiighoConversation(
-                      id: 'conv_0',
-                      title: 'Amina Diallo',
-                      subtitle: 'Parfait, on valide les maquettes !',
-                      updatedAt: DateTime.now().subtract(const Duration(minutes: 2)),
-                      unreadCount: 3,
-                      isPinned: true,
-                      isOnline: true,
-                      isVerified: true,
-                    ),
-                    MiighoConversation(
-                      id: 'conv_1',
-                      title: 'Équipe MÏÏghO Core',
-                      subtitle: 'Réunion de cadrage technique à 10h',
-                      updatedAt: DateTime.now().subtract(const Duration(minutes: 20)),
-                      isGroup: true,
-                    ),
-                    MiighoConversation(
-                      id: 'conv_2',
-                      title: 'Kofi Mensah',
-                      subtitle: 'Message vocal reçu',
-                      updatedAt: DateTime.now().subtract(const Duration(minutes: 38)),
-                      unreadCount: 1,
-                      isMuted: true,
-                    ),
-                  ];
                 }
 
                 // Filtrage selon recherche & chips

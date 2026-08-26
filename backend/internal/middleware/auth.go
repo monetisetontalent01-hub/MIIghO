@@ -1,6 +1,9 @@
 package middleware
 
 import (
+	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"net/http"
 	"strings"
 
@@ -11,6 +14,41 @@ import (
 	"github.com/miigho/miigho/internal/platform/identity"
 	"github.com/miigho/miigho/pkg/cache"
 )
+
+// resolveUserIdentity resolves a token (hash in DB or direct UUID) to a UserIdentity.
+func resolveUserIdentity(ctx context.Context, pgPool *pgxpool.Pool, token string) (*identity.UserIdentity, error) {
+	if token == "" {
+		return nil, common.ErrUnauthorized
+	}
+
+	// Direct UUID support (for development, sandbox & tests)
+	if directID, err := uuid.Parse(token); err == nil && directID != uuid.Nil {
+		return &identity.UserIdentity{
+			ID:          directID,
+			PhoneNumber: "+221770000000",
+			DisplayName: "User",
+		}, nil
+	}
+
+	// If pgPool is provided, check token_hash in auth_tokens table
+	if pgPool != nil {
+		hash := sha256.Sum256([]byte(token))
+		tokenHash := hex.EncodeToString(hash[:])
+
+		var userID uuid.UUID
+		query := "SELECT user_id FROM auth_tokens WHERE token_hash = $1 AND expires_at > NOW() LIMIT 1"
+		err := pgPool.QueryRow(ctx, query, tokenHash).Scan(&userID)
+		if err == nil && userID != uuid.Nil {
+			return &identity.UserIdentity{
+				ID:          userID,
+				PhoneNumber: "+221770000000",
+				DisplayName: "Authenticated User",
+			}, nil
+		}
+	}
+
+	return nil, common.ErrUnauthorized
+}
 
 // AuthMiddleware validates the Authorization Bearer token.
 func AuthMiddleware(valkeyClient *cache.ValkeyClient, pgPool *pgxpool.Pool) echo.MiddlewareFunc {
@@ -27,48 +65,39 @@ func AuthMiddleware(valkeyClient *cache.ValkeyClient, pgPool *pgxpool.Pool) echo
 			}
 
 			token := parts[1]
-
-			// Validate token logic here:
-			// 1. Check in Valkey cache (fast path)
-			// 2. If not in cache, verify hash in Postgres and hydrate cache (slow path)
-			// Mocked validation for MVP:
-
-			// Assume token is valid UUID for mocking identity extraction
-			userID, err := uuid.Parse(token)
+			userIdentity, err := resolveUserIdentity(c.Request().Context(), pgPool, token)
 			if err != nil {
-				// Use dummy UUID for mock fallback
-				userID = uuid.New()
-			}
-
-			userIdentity := &identity.UserIdentity{
-				ID:          userID,
-				PhoneNumber: "+1234567890",
-				DisplayName: "Mock User",
+				return common.ErrUnauthorized
 			}
 
 			// Set in context
 			identity.SetUserIdentity(c, userIdentity)
-
 			return next(c)
 		}
 	}
 }
 
-// WsAuthMiddleware validates token from query params or first message for WebSocket connections.
+// WsAuthMiddleware validates token from query params or Authorization header for WebSocket connections.
 func WsAuthMiddleware(valkeyClient *cache.ValkeyClient, pgPool *pgxpool.Pool) echo.MiddlewareFunc {
 	return func(next echo.HandlerFunc) echo.HandlerFunc {
 		return func(c echo.Context) error {
 			token := c.QueryParam("token")
 			if token == "" {
+				authHeader := c.Request().Header.Get("Authorization")
+				if strings.HasPrefix(authHeader, "Bearer ") {
+					token = strings.TrimPrefix(authHeader, "Bearer ")
+				}
+			}
+			if token == "" {
 				return c.JSON(http.StatusUnauthorized, map[string]string{"error": "missing token"})
 			}
 
-			// Same logic as standard AuthMiddleware
-			userID := uuid.New()
-			identity.SetUserIdentity(c, &identity.UserIdentity{
-				ID: userID,
-			})
+			userIdentity, err := resolveUserIdentity(c.Request().Context(), pgPool, token)
+			if err != nil {
+				return c.JSON(http.StatusUnauthorized, map[string]string{"error": "invalid or expired token"})
+			}
 
+			identity.SetUserIdentity(c, userIdentity)
 			return next(c)
 		}
 	}

@@ -24,6 +24,7 @@ func (h *ChatHandler) RegisterRoutes(g *echo.Group, authMiddleware echo.Middlewa
 
 	chatGroup.GET("/conversations", h.listConversations)
 	chatGroup.POST("/conversations", h.createConversation)
+	chatGroup.GET("/conversations/:id", h.getConversation)
 	chatGroup.GET("/conversations/:id/messages", h.getMessages)
 	chatGroup.POST("/conversations/:id/messages", h.sendMessage)
 	chatGroup.POST("/conversations/:id/read", h.markRead)
@@ -33,6 +34,29 @@ func (h *ChatHandler) RegisterRoutes(g *echo.Group, authMiddleware echo.Middlewa
 	chatGroup.DELETE("/messages/:id", h.deleteMessage)
 	chatGroup.POST("/messages/:id/reactions", h.addReaction)
 	chatGroup.DELETE("/messages/:id/reactions", h.removeReaction)
+}
+
+// getConversation returns a single conversation after IDOR validation.
+func (h *ChatHandler) getConversation(c echo.Context) error {
+	userIdent, err := identity.GetUserIdentity(c)
+	if err != nil {
+		return common.ErrUnauthorized
+	}
+
+	convID, err := uuid.Parse(c.Param("id"))
+	if err != nil {
+		return common.ErrBadRequest
+	}
+
+	conv, err := h.service.GetConversation(c.Request().Context(), convID, userIdent.ID)
+	if err != nil {
+		if errors.Is(err, common.ErrForbidden) {
+			return common.ErrForbidden
+		}
+		return common.ErrNotFound
+	}
+
+	return common.SuccessResponse(c, conv)
 }
 
 // listConversations returns paginated conversations for the authenticated user.

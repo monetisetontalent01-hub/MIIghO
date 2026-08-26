@@ -18,14 +18,26 @@ class WsClient {
   Stream<dynamic> get messages => _messageController.stream;
   Stream<String> get connectionState => _stateController.stream;
 
+  String? _currentToken;
+
   WsClient(this.wsUrl);
+
+  void connectWithToken(String token) {
+    _currentToken = token;
+    connect();
+  }
 
   void connect() {
     _isExplicitlyDisconnected = false;
     _reconnectTimer?.cancel();
     _stateController.add('connecting');
     try {
-      _channel = WebSocketChannel.connect(Uri.parse(wsUrl));
+      final uri = _currentToken != null && _currentToken!.isNotEmpty
+          ? (wsUrl.contains('?')
+              ? Uri.parse('$wsUrl&token=$_currentToken')
+              : Uri.parse('$wsUrl?token=$_currentToken'))
+          : Uri.parse(wsUrl);
+      _channel = WebSocketChannel.connect(uri);
       _stateController.add('connected');
       _reconnectDelaySeconds = 1; // Reset backoff on successful connect
       

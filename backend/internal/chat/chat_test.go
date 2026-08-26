@@ -942,15 +942,19 @@ func TestChat_IDOR_AuthorizationChecks(t *testing.T) {
 	err = env.service.MarkRead(ctx, conv.ID, env.userC, msg.ID)
 	assert.ErrorIs(t, err, common.ErrForbidden, "Non-member User C must be forbidden from marking messages as read")
 
-	// TEST IDOR 3: User C cannot add reaction in conv A/B
-	err = env.service.AddReaction(ctx, msg.ID, env.userC, "👍")
-	assert.ErrorIs(t, err, common.ErrForbidden, "Non-member User C must be forbidden from adding reactions")
+	// TEST IDOR 4: User C cannot remove reaction in conv A/B
+	err = env.service.RemoveReaction(ctx, msg.ID, env.userC, "👍")
+	assert.ErrorIs(t, err, common.ErrForbidden, "Non-member User C must be forbidden from removing reactions")
 
-	// TEST IDOR 4: User B (recipient) cannot edit User A's message
+	// TEST IDOR 5: User C cannot get conversation A/B
+	_, err = env.service.GetConversation(ctx, conv.ID, env.userC)
+	assert.ErrorIs(t, err, common.ErrForbidden, "Non-member User C must be forbidden from getting conversation")
+
+	// TEST IDOR 6: User B (recipient) cannot edit User A's message
 	_, err = env.service.EditMessage(ctx, msg.ID, env.userB, []byte("Tampered"))
 	assert.ErrorIs(t, err, common.ErrForbidden, "User B must not be allowed to edit User A's message")
 
-	// TEST IDOR 5: User B cannot delete User A's message
+	// TEST IDOR 7: User B cannot delete User A's message
 	err = env.service.DeleteMessage(ctx, msg.ID, env.userB)
 	assert.ErrorIs(t, err, common.ErrForbidden, "User B must not be allowed to delete User A's message")
 }
@@ -1062,4 +1066,79 @@ func TestChat_ConversationUpdatedAt_AdvancesOnMessage(t *testing.T) {
 	updated, err := env.repo.GetConversation(ctx, conv.ID)
 	require.NoError(t, err)
 	assert.True(t, updated.UpdatedAt.After(originalUpdatedAt) || updated.UpdatedAt.Equal(originalUpdatedAt))
+}
+
+func TestChat_GetConversation_IDOR(t *testing.T) {
+	env := setupChatTestEnv(t)
+	ctx := context.Background()
+
+	conv, err := env.service.CreateDirectConversation(ctx, env.userA, env.userB)
+	require.NoError(t, err)
+
+	// User A can access conversation
+	fetchedA, err := env.service.GetConversation(ctx, conv.ID, env.userA)
+	require.NoError(t, err)
+	assert.Equal(t, conv.ID, fetchedA.ID)
+
+	// User B can access conversation
+	fetchedB, err := env.service.GetConversation(ctx, conv.ID, env.userB)
+	require.NoError(t, err)
+	assert.Equal(t, conv.ID, fetchedB.ID)
+
+	// User C (non-member) gets ErrForbidden
+	_, err = env.service.GetConversation(ctx, conv.ID, env.userC)
+	assert.ErrorIs(t, err, common.ErrForbidden)
+}
+
+func TestChat_RealTime_Hub_Delivery_Between_Users(t *testing.T) {
+	env := setupChatTestEnv(t)
+	hub := NewHub()
+	go hub.Run()
+	env.service.SetHub(hub)
+	ctx := context.Background()
+
+	// Register simulated connection for User B
+	userBChan := make(chan []byte, 10)
+	connB := &Connection{
+		userID: env.userB,
+		send:   userBChan,
+	}
+	hub.register <- connB
+	time.Sleep(10 * time.Millisecond) // Let hub register
+
+	// Verify User B is online
+	assert.True(t, hub.IsUserOnline(env.userB))
+	assert.False(t, hub.IsUserOnline(env.userA))
+
+	// User A creates conversation with User B
+	conv, err := env.service.CreateDirectConversation(ctx, env.userA, env.userB)
+	require.NoError(t, err)
+
+	// User B receives conversation.created
+	select {
+	case payload := <-userBChan:
+		assert.Contains(t, string(payload), "conversation.created")
+	case <-time.After(500 * time.Millisecond):
+		t.Fatal("User B did not receive conversation.created")
+	}
+
+	// User A sends message
+	msg, err := env.service.SendMessage(ctx, conv.ID, env.userA, []byte("Realtime Ping"), MsgText, nil, nil)
+	require.NoError(t, err)
+	require.NotNil(t, msg)
+
+	// User B should receive the message.sent payload via WebSocket channel
+	select {
+	case payload := <-userBChan:
+		assert.Contains(t, string(payload), "message.sent")
+		assert.Contains(t, string(payload), conv.ID.String())
+		assert.Contains(t, string(payload), msg.ID.String())
+	case <-time.After(500 * time.Millisecond):
+		t.Fatal("User B did not receive the real-time message payload on WebSocket channel")
+	}
+
+	// Clean up
+	hub.unregister <- connB
+	time.Sleep(10 * time.Millisecond)
+	assert.False(t, hub.IsUserOnline(env.userB))
 }

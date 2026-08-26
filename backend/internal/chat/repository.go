@@ -370,4 +370,3 @@ func (r *PostgresChatRepository) MarkAsRead(ctx context.Context, conversationID,
 	_, err := r.pool.Exec(ctx, query, messageID, userID, now)
 	return err
 }
-

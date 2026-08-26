@@ -218,6 +218,9 @@ class ChatBloc extends Bloc<ChatEvent, ChatState> {
     on<SendTypingEvent>(_onSendTyping);
     on<WsEnvelopeReceivedEvent>(_onWsEnvelopeReceived);
 
+    // Automatically connect WebSocket with user session
+    chatRepository.connectWebSocket();
+
     _wsSubscription = chatRepository.wsClient.messages.listen((msg) {
       if (msg is Map<String, dynamic>) {
         add(WsEnvelopeReceivedEvent(msg));
@@ -231,17 +234,19 @@ class ChatBloc extends Bloc<ChatEvent, ChatState> {
       final conversations = await chatRepository.getConversations();
       _allConversations = List.from(conversations);
       emit(ConversationsLoaded(_allConversations));
-    } catch (_) {
-      final conversations = await chatRepository.getConversations();
-      _allConversations = List.from(conversations);
-      emit(ConversationsLoaded(_allConversations));
+    } catch (e) {
+      emit(ChatError('Impossible de charger les conversations: $e'));
     }
   }
 
   Future<void> _onLoadMessages(LoadMessages event, Emitter<ChatState> emit) async {
     emit(ChatLoading());
-    final messages = await chatRepository.getMessages(event.conversationId);
-    emit(MessagesLoaded(conversationId: event.conversationId, messages: messages));
+    try {
+      final messages = await chatRepository.getMessages(event.conversationId);
+      emit(MessagesLoaded(conversationId: event.conversationId, messages: messages));
+    } catch (e) {
+      emit(ChatError('Impossible de charger les messages: $e'));
+    }
   }
 
   Future<void> _onSendTextMessage(SendTextMessage event, Emitter<ChatState> emit) async {
@@ -294,61 +299,16 @@ class ChatBloc extends Bloc<ChatEvent, ChatState> {
         );
         _allConversations[idx] = updated;
       }
-
-      // Simulated instant reply in demo mode (for conv_0, conv_1, conv_2)
-      if (event.conversationId.startsWith('conv_')) {
-        _simulateDemoReply(event.conversationId, event.content);
-      }
     } catch (e) {
+      // Reconcile as failed (no fake success)
       final latestState = state;
       if (latestState is MessagesLoaded && latestState.conversationId == event.conversationId) {
         final updatedList = latestState.messages.map((m) {
-          return m.id == tempId ? m.copyWith(status: MessageDeliveryStatus.sent) : m;
+          return m.id == tempId ? m.copyWith(status: MessageDeliveryStatus.failed) : m;
         }).toList();
         emit(latestState.copyWith(messages: updatedList));
       }
     }
-  }
-
-  void _simulateDemoReply(String convId, String userMessage) {
-    Future.delayed(const Duration(milliseconds: 600), () {
-      add(WsEnvelopeReceivedEvent({
-        'type': 'user.typing',
-        'conversation_id': convId,
-        'data': {'is_typing': true},
-      }));
-    });
-
-    Future.delayed(const Duration(milliseconds: 1800), () {
-      add(WsEnvelopeReceivedEvent({
-        'type': 'user.typing',
-        'conversation_id': convId,
-        'data': {'is_typing': false},
-      }));
-
-      String replyText = 'Bien reçu ! Je valide.';
-      if (convId == 'conv_0') {
-        replyText = 'Merci pour ton retour ! Le chiffrement et la sécurité MÏÏghO fonctionnent à merveille 👍';
-      } else if (convId == 'conv_1') {
-        replyText = 'Équipe MÏÏghO : Message synchronisé en temps réel sur le canal.';
-      } else if (convId == 'conv_2') {
-        replyText = 'Parfait, je viens de vérifier le solde sur MÏÏghO Pay. C\'est instantané !';
-      }
-
-      add(WsEnvelopeReceivedEvent({
-        'type': 'message.sent',
-        'conversation_id': convId,
-        'data': {
-          'id': 'reply_${DateTime.now().millisecondsSinceEpoch}',
-          'conversation_id': convId,
-          'content': replyText,
-          'sender_id': 'peer_user',
-          'type': 'text',
-          'status': 'read',
-          'created_at': DateTime.now().toIso8601String(),
-        },
-      }));
-    });
   }
 
   Future<void> _onSendVoiceMessage(SendVoiceMessage event, Emitter<ChatState> emit) async {
@@ -397,7 +357,7 @@ class ChatBloc extends Bloc<ChatEvent, ChatState> {
       final latestState = state;
       if (latestState is MessagesLoaded && latestState.conversationId == event.conversationId) {
         final updatedList = latestState.messages.map((m) {
-          return m.id == tempId ? m.copyWith(status: MessageDeliveryStatus.sent) : m;
+          return m.id == tempId ? m.copyWith(status: MessageDeliveryStatus.failed) : m;
         }).toList();
         emit(latestState.copyWith(messages: updatedList));
       }
@@ -454,7 +414,7 @@ class ChatBloc extends Bloc<ChatEvent, ChatState> {
       final latestState = state;
       if (latestState is MessagesLoaded && latestState.conversationId == event.conversationId) {
         final updatedList = latestState.messages.map((m) {
-          return m.id == tempId ? m.copyWith(status: MessageDeliveryStatus.sent) : m;
+          return m.id == tempId ? m.copyWith(status: MessageDeliveryStatus.failed) : m;
         }).toList();
         emit(latestState.copyWith(messages: updatedList));
       }
@@ -611,6 +571,7 @@ class ChatBloc extends Bloc<ChatEvent, ChatState> {
 
     switch (type) {
       case 'message.sent':
+      case 'message.created':
         if (data is Map<String, dynamic>) {
           final currentUserId = await chatRepository.secureStorage.getUserId() ?? '';
           final newMsg = MiighoMessageItem.fromJson(data, currentUserId: currentUserId);
@@ -651,6 +612,18 @@ class ChatBloc extends Bloc<ChatEvent, ChatState> {
         }
         break;
 
+      case 'message.delivered':
+        final currentState = state;
+        if (currentState is MessagesLoaded && currentState.conversationId == convId) {
+          final updated = currentState.messages.map((m) {
+            return (m.isMe && m.status != MessageDeliveryStatus.read)
+                ? m.copyWith(status: MessageDeliveryStatus.delivered)
+                : m;
+          }).toList();
+          emit(currentState.copyWith(messages: updated));
+        }
+        break;
+
       case 'message.updated':
         if (data is Map<String, dynamic>) {
           final msgId = data['id'] as String?;
@@ -676,10 +649,87 @@ class ChatBloc extends Bloc<ChatEvent, ChatState> {
         }
         break;
 
+      case 'reaction.added':
+        if (data is Map<String, dynamic>) {
+          final msgId = data['message_id'] as String?;
+          final emoji = data['emoji'] as String?;
+          final uid = data['user_id'] as String?;
+          final currentUserId = await chatRepository.secureStorage.getUserId() ?? '';
+
+          final currentState = state;
+          if (currentState is MessagesLoaded && currentState.conversationId == convId && msgId != null && emoji != null) {
+            final updated = currentState.messages.map((m) {
+              if (m.id == msgId) {
+                final existing = List<MessageReactionData>.from(m.reactions);
+                final rIdx = existing.indexWhere((r) => r.emoji == emoji);
+                if (rIdx != -1) {
+                  existing[rIdx] = MessageReactionData(
+                    emoji: emoji,
+                    count: existing[rIdx].count + 1,
+                    hasReacted: uid == currentUserId || existing[rIdx].hasReacted,
+                  );
+                } else {
+                  existing.add(MessageReactionData(
+                    emoji: emoji,
+                    count: 1,
+                    hasReacted: uid == currentUserId,
+                  ));
+                }
+                return m.copyWith(reactions: existing);
+              }
+              return m;
+            }).toList();
+            emit(currentState.copyWith(messages: updated));
+          }
+        }
+        break;
+
+      case 'reaction.removed':
+        if (data is Map<String, dynamic>) {
+          final msgId = data['message_id'] as String?;
+          final emoji = data['emoji'] as String?;
+          final uid = data['user_id'] as String?;
+          final currentUserId = await chatRepository.secureStorage.getUserId() ?? '';
+
+          final currentState = state;
+          if (currentState is MessagesLoaded && currentState.conversationId == convId && msgId != null && emoji != null) {
+            final updated = currentState.messages.map((m) {
+              if (m.id == msgId) {
+                final existing = List<MessageReactionData>.from(m.reactions);
+                final rIdx = existing.indexWhere((r) => r.emoji == emoji);
+                if (rIdx != -1) {
+                  if (existing[rIdx].count > 1) {
+                    existing[rIdx] = MessageReactionData(
+                      emoji: emoji,
+                      count: existing[rIdx].count - 1,
+                      hasReacted: uid == currentUserId ? false : existing[rIdx].hasReacted,
+                    );
+                  } else {
+                    existing.removeAt(rIdx);
+                  }
+                }
+                return m.copyWith(reactions: existing);
+              }
+              return m;
+            }).toList();
+            emit(currentState.copyWith(messages: updated));
+          }
+        }
+        break;
+
       case 'user.typing':
+      case 'typing.started':
+      case 'typing.stopped':
         final currentState = state;
         if (currentState is MessagesLoaded && currentState.conversationId == convId) {
-          final isTyping = (data is Map<String, dynamic>) ? data['is_typing'] == true : false;
+          bool isTyping = false;
+          if (type == 'typing.started') {
+            isTyping = true;
+          } else if (type == 'typing.stopped') {
+            isTyping = false;
+          } else if (data is Map<String, dynamic>) {
+            isTyping = data['is_typing'] == true;
+          }
           emit(currentState.copyWith(isPeerTyping: isTyping));
         }
         break;

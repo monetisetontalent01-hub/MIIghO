@@ -88,14 +88,20 @@ func readPump(conn *Connection, hub *Hub, service *ChatService) {
 					}
 				}
 
-			case "typing":
+			case "typing", "typing.started", "typing.stopped":
 				if env.ConversationID != "" && service != nil {
 					if convID, parseErr := uuid.Parse(env.ConversationID); parseErr == nil {
-						// Broadcast typing indicator to other conversation members
 						isTyping := true
-						if val, ok := env.Data.(bool); ok {
+						if env.Type == "typing.stopped" {
+							isTyping = false
+						} else if val, ok := env.Data.(bool); ok {
 							isTyping = val
+						} else if m, ok := env.Data.(map[string]interface{}); ok {
+							if val, ok := m["is_typing"].(bool); ok {
+								isTyping = val
+							}
 						}
+
 						typingPayload, _ := json.Marshal(WsEnvelope{
 							Type:           "user.typing",
 							ConversationID: env.ConversationID,
@@ -117,6 +123,40 @@ func readPump(conn *Connection, hub *Hub, service *ChatService) {
 							}
 							hub.BroadcastToUsers(recipientMembers, typingPayload)
 						}
+					}
+				}
+
+			case "message.read":
+				if env.ConversationID != "" && service != nil {
+					if convID, parseErr := uuid.Parse(env.ConversationID); parseErr == nil {
+						var msgID uuid.UUID
+						if dataMap, ok := env.Data.(map[string]interface{}); ok {
+							if midStr, ok := dataMap["message_id"].(string); ok {
+								msgID, _ = uuid.Parse(midStr)
+							}
+						} else if midStr, ok := env.Data.(string); ok {
+							msgID, _ = uuid.Parse(midStr)
+						}
+
+						if msgID != uuid.Nil {
+							_ = service.MarkRead(context.Background(), convID, conn.userID, msgID)
+						}
+					}
+				}
+
+			case "message.delivered":
+				if service != nil {
+					var msgID uuid.UUID
+					if dataMap, ok := env.Data.(map[string]interface{}); ok {
+						if midStr, ok := dataMap["message_id"].(string); ok {
+							msgID, _ = uuid.Parse(midStr)
+						}
+					} else if midStr, ok := env.Data.(string); ok {
+						msgID, _ = uuid.Parse(midStr)
+					}
+
+					if msgID != uuid.Nil {
+						_ = service.MarkDelivered(context.Background(), msgID, conn.userID)
 					}
 				}
 			}
