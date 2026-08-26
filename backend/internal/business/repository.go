@@ -532,7 +532,8 @@ func (r *MemoryBusinessRepository) GetRefund(ctx context.Context, id uuid.UUID) 
 	if !ok {
 		return nil, ErrRefundNotFound
 	}
-	return refund, nil
+	res := *refund
+	return &res, nil
 }
 
 func (r *MemoryBusinessRepository) GetRefundByIdempotencyKey(ctx context.Context, key string) (*Refund, error) {
@@ -543,7 +544,8 @@ func (r *MemoryBusinessRepository) GetRefundByIdempotencyKey(ctx context.Context
 	if !ok {
 		return nil, ErrRefundNotFound
 	}
-	return refund, nil
+	res := *refund
+	return &res, nil
 }
 
 func (r *MemoryBusinessRepository) GetRefundsByPaymentIntent(ctx context.Context, paymentIntentID uuid.UUID) ([]*Refund, error) {
@@ -553,7 +555,8 @@ func (r *MemoryBusinessRepository) GetRefundsByPaymentIntent(ctx context.Context
 	var result []*Refund
 	for _, ref := range r.refunds {
 		if ref.PaymentIntentID == paymentIntentID {
-			result = append(result, ref)
+			res := *ref
+			result = append(result, &res)
 		}
 	}
 	return result, nil
@@ -566,7 +569,8 @@ func (r *MemoryBusinessRepository) GetRefundsByBusiness(ctx context.Context, bus
 	var result []*Refund
 	for _, ref := range r.refunds {
 		if ref.BusinessID == businessID {
-			result = append(result, ref)
+			res := *ref
+			result = append(result, &res)
 		}
 	}
 	return result, nil

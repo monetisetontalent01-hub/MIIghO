@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/google/uuid"
@@ -33,6 +34,7 @@ type Service struct {
 	repo               Repository
 	ledgerRepo         ledger.Repository
 	settlementProvider SettlementProvider
+	settlementMu       sync.Mutex
 }
 
 func NewService(repo Repository, ledgerRepo ledger.Repository) *Service {
@@ -1209,6 +1211,9 @@ func (s *Service) CalculateEligibleSettlement(ctx context.Context, requesterUser
 
 // CreateSettlement builds a batch settlement for eligible payments and puts it in PENDING status.
 func (s *Service) CreateSettlement(ctx context.Context, requesterUserID, businessID uuid.UUID, req *CreateSettlementRequest) (*SettlementReceipt, error) {
+	s.settlementMu.Lock()
+	defer s.settlementMu.Unlock()
+
 	// 1. Fetch Business & verify status
 	biz, err := s.repo.GetBusiness(ctx, businessID)
 	if err != nil {
