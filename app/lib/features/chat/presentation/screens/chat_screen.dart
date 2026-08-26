@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
+import 'package:go_router/go_router.dart';
 import '../../../../core/theme/colors.dart';
 import '../../../../shared/widgets/miigho_avatar.dart';
 import '../../models/chat_models.dart';
@@ -323,8 +324,20 @@ class _ChatScreenState extends State<ChatScreen> {
         Widget chatContent = Scaffold(
           backgroundColor: isDark ? MiighoColors.canvas : MiighoColors.lightCanvas,
           appBar: AppBar(
-            titleSpacing: 0,
-            automaticallyImplyLeading: !widget.isEmbedded,
+            titleSpacing: widget.isEmbedded ? 16 : 0,
+            leading: widget.isEmbedded
+                ? null
+                : IconButton(
+                    icon: const Icon(Icons.arrow_back_ios_new_rounded, size: 20),
+                    tooltip: 'Retour',
+                    onPressed: () {
+                      if (context.canPop()) {
+                        context.pop();
+                      } else {
+                        context.go('/conversations');
+                      }
+                    },
+                  ),
             title: InkWell(
               onTap: () {
                 setState(() {

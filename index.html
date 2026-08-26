@@ -723,8 +723,12 @@
             .mobile-bottom-nav { display: flex; }
             .app-main { padding-bottom: 64px; }
             .dash-container { padding: 20px 16px; }
-            .chat-layout { flex-direction: column; }
-            .chat-list-panel { width: 100%; height: 100%; }
+            .chat-layout { flex-direction: column; height: calc(100vh - 64px); position: relative; overflow: hidden; }
+            .chat-list-panel { width: 100%; height: 100%; display: flex; flex-direction: column; }
+            .chat-active-panel { width: 100%; height: 100%; display: none; flex-direction: column; }
+            .chat-layout.show-mobile-detail .chat-list-panel { display: none; }
+            .chat-layout.show-mobile-detail .chat-active-panel { display: flex; }
+            .chat-back-mobile { display: inline-flex !important; }
         }
     </style>
 </head>
@@ -991,11 +995,12 @@
                 <!-- PANNEAU DROIT : CONVERSATION ACTIVE -->
                 <div class="chat-active-panel">
                     <div class="chat-topbar">
-                        <div style="display: flex; align-items: center; gap: 12px;">
+                        <div style="display: flex; align-items: center; gap: 10px;">
+                            <button class="chat-back-mobile btn-action" style="display:none; padding: 6px 10px; font-size: 14px;" onclick="closeMobileChat()">←</button>
                             <div class="avatar-circle" id="chat-avatar" style="background: #10B981;">AD</div>
                             <div>
                                 <div style="font-weight: 700; font-size: 15px;" id="chat-name">Amina Diallo</div>
-                                <div style="font-size: 11px; color: #10B981; font-weight: 600;">● En ligne • Chiffrement Signal Protocol</div>
+                                <div style="font-size: 11px; color: #10B981; font-weight: 600;" id="chat-status">● En ligne • Chiffrement Signal Protocol</div>
                             </div>
                         </div>
                         <div style="display: flex; gap: 8px;">
@@ -3015,6 +3020,12 @@ activeFeeRule = {
             document.getElementById('chat-name').innerText = conv.name;
             document.getElementById('chat-avatar').innerText = conv.avatar;
             document.getElementById('chat-avatar').style.background = conv.color;
+            if (document.getElementById('chat-status')) {
+                document.getElementById('chat-status').innerText = conv.status;
+            }
+
+            // Show mobile active chat view
+            document.querySelector('.chat-layout')?.classList.add('show-mobile-detail');
 
             // Highlight in list
             document.querySelectorAll('.conv-item').forEach(el => el.classList.remove('active'));
@@ -3029,6 +3040,10 @@ activeFeeRule = {
                 container.appendChild(bubble);
             });
             container.scrollTop = container.scrollHeight;
+        }
+
+        function closeMobileChat() {
+            document.querySelector('.chat-layout')?.classList.remove('show-mobile-detail');
         }
 
         function sendMessage() {

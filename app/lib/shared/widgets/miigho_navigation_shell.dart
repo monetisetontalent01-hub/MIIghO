@@ -43,11 +43,13 @@ class MiighoNavigationShell extends StatelessWidget {
           );
         }
 
-        // Mobile / Tablet view
+        // Mobile / Tablet view: hide bottom nav when inside an active chat detail
+        final isChatDetail = currentRoute.startsWith('/conversations/') && currentRoute != '/conversations';
+
         return Scaffold(
           backgroundColor: isDark ? MiighoColors.canvas : MiighoColors.lightCanvas,
           body: child,
-          bottomNavigationBar: MiighoBottomNav(currentRoute: currentRoute),
+          bottomNavigationBar: isChatDetail ? null : MiighoBottomNav(currentRoute: currentRoute),
         );
       },
     );
