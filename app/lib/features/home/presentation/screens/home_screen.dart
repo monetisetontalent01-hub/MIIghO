@@ -122,12 +122,15 @@ class _HomeScreenState extends State<HomeScreen> {
             onRefresh: () async {
               await Future.delayed(const Duration(milliseconds: 600));
             },
-            child: ListView(
-              padding: EdgeInsets.symmetric(
-                horizontal: isWide ? 32 : 16,
-                vertical: 20,
-              ),
-              children: [
+            child: Center(
+              child: ConstrainedBox(
+                constraints: const BoxConstraints(maxWidth: 800),
+                child: ListView(
+                  padding: EdgeInsets.symmetric(
+                    horizontal: isWide ? 32 : 16,
+                    vertical: 20,
+                  ),
+                  children: [
                 // Section Bienvenue
                 Row(
                   mainAxisAlignment: MainAxisAlignment.spaceBetween,
@@ -293,8 +296,10 @@ class _HomeScreenState extends State<HomeScreen> {
                 const SizedBox(height: 40),
               ],
             ),
-          );
-        },
+          ),
+        ),
+      );
+    },
       ),
     );
   }

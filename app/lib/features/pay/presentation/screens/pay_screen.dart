@@ -165,9 +165,12 @@ class _PayScreenState extends State<PayScreen> {
                 onRefresh: () async {
                   context.read<PayBloc>().add(LoadPayWallet(refresh: true));
                 },
-                child: ListView(
-                  padding: const EdgeInsets.all(16),
-                  children: [
+                child: Center(
+                  child: ConstrainedBox(
+                    constraints: const BoxConstraints(maxWidth: 720),
+                    child: ListView(
+                      padding: const EdgeInsets.all(16),
+                      children: [
                     // Bannière d'avertissement PROTOTYPE / SANDBOX
                     Container(
                       padding: const EdgeInsets.all(12),
@@ -449,6 +452,8 @@ class _PayScreenState extends State<PayScreen> {
                   ],
                 ),
               ),
+            ),
+          ),
 
               // Overlay indicateur de traitement en cours
               if (isProcessing)

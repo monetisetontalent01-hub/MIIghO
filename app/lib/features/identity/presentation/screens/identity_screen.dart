@@ -66,9 +66,12 @@ class IdentityScreen extends StatelessWidget {
             );
           }
 
-          return ListView(
-            padding: const EdgeInsets.all(16),
-            children: [
+          return Center(
+            child: ConstrainedBox(
+              constraints: const BoxConstraints(maxWidth: 640),
+              child: ListView(
+                padding: const EdgeInsets.all(16),
+                children: [
               // Carte d'Identité Souveraine MÏÏghO
               Container(
                 decoration: BoxDecoration(
@@ -318,8 +321,10 @@ class IdentityScreen extends StatelessWidget {
 
               const SizedBox(height: 32),
             ],
-          );
-        },
+          ),
+        ),
+      );
+    },
       ),
     );
   }

@@ -712,23 +712,97 @@
             font-size: 11px;
             font-weight: 700;
             cursor: pointer;
+        /* ══════════ MOBILE TOP APP BAR ══════════ */
+        .mobile-top-bar {
+            display: none;
+            height: 56px;
+            background: var(--bg-surface-1);
+            border-bottom: 1px solid var(--border-subtle);
+            padding: 0 16px;
+            align-items: center;
+            justify-content: space-between;
+            position: sticky;
+            top: 0;
+            z-index: 400;
+            backdrop-filter: blur(12px);
         }
 
-        .bottom-nav-item.active {
-            color: var(--primary);
+        .mobile-top-brand {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            cursor: pointer;
+        }
+
+        .mobile-top-tools {
+            display: flex;
+            align-items: center;
+            gap: 8px;
         }
 
         @media (max-width: 900px) {
+            body { flex-direction: column; }
             .sidebar { display: none; }
+            .mobile-top-bar { display: flex; }
             .mobile-bottom-nav { display: flex; }
-            .app-main { padding-bottom: 64px; }
-            .dash-container { padding: 20px 16px; }
-            .chat-layout { flex-direction: column; height: calc(100vh - 64px); position: relative; overflow: hidden; }
+            .app-main { padding-bottom: 74px; }
+            .dash-container {
+                padding: 16px;
+                max-width: 580px;
+                margin: 0 auto;
+                width: 100%;
+            }
+            .dash-grid {
+                grid-template-columns: 1fr;
+                gap: 14px;
+            }
+            .wallet-card {
+                padding: 20px 16px;
+            }
+            .wallet-balance {
+                font-size: 30px;
+            }
+            .wallet-actions {
+                display: grid;
+                grid-template-columns: repeat(2, 1fr);
+                gap: 10px;
+            }
+            .wallet-actions .btn-action {
+                justify-content: center;
+                padding: 11px 12px;
+                font-size: 13px;
+                width: 100%;
+            }
+            .dash-header {
+                flex-direction: column;
+                align-items: flex-start;
+                gap: 12px;
+            }
+            .dash-header > div:last-child,
+            .dash-header > button {
+                width: 100%;
+                justify-content: center;
+            }
+            .chat-layout {
+                flex-direction: column;
+                height: calc(100vh - 126px);
+                position: relative;
+                overflow: hidden;
+                max-width: 580px;
+                margin: 0 auto;
+                width: 100%;
+            }
             .chat-list-panel { width: 100%; height: 100%; display: flex; flex-direction: column; }
             .chat-active-panel { width: 100%; height: 100%; display: none; flex-direction: column; }
             .chat-layout.show-mobile-detail .chat-list-panel { display: none; }
             .chat-layout.show-mobile-detail .chat-active-panel { display: flex; }
             .chat-back-mobile { display: inline-flex !important; }
+            .modal-content {
+                width: 94vw !important;
+                max-width: 480px !important;
+                margin: auto;
+                padding: 20px 16px !important;
+            }
         }
     </style>
 </head>
@@ -805,6 +879,18 @@
 
     <!-- ZONE PRINCIPALE -->
     <main class="app-main">
+
+        <!-- BARRE DU HAUT (SMARTPHONE) -->
+        <header class="mobile-top-bar">
+            <div class="mobile-top-brand" onclick="switchView('dash')">
+                <img src="miigho_logo.jpg" alt="MÏÏghO" class="brand-logo" style="width: 32px; height: 32px;">
+                <span style="font-family: 'Outfit', sans-serif; font-weight: 800; font-size: 17px; letter-spacing: -0.3px;">MÏÏghO <span class="os-badge">OS</span></span>
+            </div>
+            <div class="mobile-top-tools">
+                <button class="tool-btn" onclick="toggleTheme()" style="padding: 6px 10px; font-size: 15px;" title="Basculer thème">🌙</button>
+                <div class="avatar-circle" style="width: 32px; height: 32px; font-size: 12px; cursor: pointer;" onclick="switchView('identity')">MK</div>
+            </div>
+        </header>
 
         <!-- 1. DASHBOARD VIEW -->
         <section id="view-dash" class="view-pane active">
@@ -2936,6 +3022,16 @@ activeFeeRule = {
             document.querySelectorAll('.view-pane').forEach(el => el.classList.remove('active'));
             document.querySelectorAll('.nav-link').forEach(el => el.classList.remove('active'));
             document.querySelectorAll('.bottom-nav-item').forEach(el => el.classList.remove('active'));
+
+            // Scroll top for mobile
+            document.querySelector('.app-main')?.scrollTo({ top: 0, behavior: 'instant' });
+
+            // Highlight sidebar & bottom nav
+            const bottomNavMap = { 'dash': 0, 'chat': 1, 'pay': 2, 'identity': 3 };
+            const bottomItems = document.querySelectorAll('.mobile-bottom-nav .bottom-nav-item');
+            if (bottomNavMap[viewKey] !== undefined && bottomItems[bottomNavMap[viewKey]]) {
+                bottomItems[bottomNavMap[viewKey]].classList.add('active');
+            }
 
             if (['market', 'cloud', 'media', 'dev'].includes(viewKey)) {
                 const target = document.getElementById('view-module-generic');
