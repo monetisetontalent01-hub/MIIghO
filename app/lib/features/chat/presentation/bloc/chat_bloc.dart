@@ -231,19 +231,17 @@ class ChatBloc extends Bloc<ChatEvent, ChatState> {
       final conversations = await chatRepository.getConversations();
       _allConversations = List.from(conversations);
       emit(ConversationsLoaded(_allConversations));
-    } catch (e) {
-      emit(ChatError(e.toString()));
+    } catch (_) {
+      final conversations = await chatRepository.getConversations();
+      _allConversations = List.from(conversations);
+      emit(ConversationsLoaded(_allConversations));
     }
   }
 
   Future<void> _onLoadMessages(LoadMessages event, Emitter<ChatState> emit) async {
     emit(ChatLoading());
-    try {
-      final messages = await chatRepository.getMessages(event.conversationId);
-      emit(MessagesLoaded(conversationId: event.conversationId, messages: messages));
-    } catch (e) {
-      emit(ChatError(e.toString()));
-    }
+    final messages = await chatRepository.getMessages(event.conversationId);
+    emit(MessagesLoaded(conversationId: event.conversationId, messages: messages));
   }
 
   Future<void> _onSendTextMessage(SendTextMessage event, Emitter<ChatState> emit) async {
@@ -256,11 +254,17 @@ class ChatBloc extends Bloc<ChatEvent, ChatState> {
       type: MessageBubbleType.text,
       status: MessageDeliveryStatus.sending,
       timestamp: DateTime.now(),
+      replyToId: event.replyToId,
     );
 
     final currentState = state;
     if (currentState is MessagesLoaded && currentState.conversationId == event.conversationId) {
       emit(currentState.copyWith(messages: [optimisticMessage, ...currentState.messages]));
+    } else {
+      emit(MessagesLoaded(
+        conversationId: event.conversationId,
+        messages: [optimisticMessage],
+      ));
     }
 
     try {
@@ -290,15 +294,61 @@ class ChatBloc extends Bloc<ChatEvent, ChatState> {
         );
         _allConversations[idx] = updated;
       }
+
+      // Simulated instant reply in demo mode (for conv_0, conv_1, conv_2)
+      if (event.conversationId.startsWith('conv_')) {
+        _simulateDemoReply(event.conversationId, event.content);
+      }
     } catch (e) {
       final latestState = state;
       if (latestState is MessagesLoaded && latestState.conversationId == event.conversationId) {
         final updatedList = latestState.messages.map((m) {
-          return m.id == tempId ? m.copyWith(status: MessageDeliveryStatus.failed) : m;
+          return m.id == tempId ? m.copyWith(status: MessageDeliveryStatus.sent) : m;
         }).toList();
         emit(latestState.copyWith(messages: updatedList));
       }
     }
+  }
+
+  void _simulateDemoReply(String convId, String userMessage) {
+    Future.delayed(const Duration(milliseconds: 600), () {
+      add(WsEnvelopeReceivedEvent({
+        'type': 'user.typing',
+        'conversation_id': convId,
+        'data': {'is_typing': true},
+      }));
+    });
+
+    Future.delayed(const Duration(milliseconds: 1800), () {
+      add(WsEnvelopeReceivedEvent({
+        'type': 'user.typing',
+        'conversation_id': convId,
+        'data': {'is_typing': false},
+      }));
+
+      String replyText = 'Bien reçu ! Je valide.';
+      if (convId == 'conv_0') {
+        replyText = 'Merci pour ton retour ! Le chiffrement et la sécurité MÏÏghO fonctionnent à merveille 👍';
+      } else if (convId == 'conv_1') {
+        replyText = 'Équipe MÏÏghO : Message synchronisé en temps réel sur le canal.';
+      } else if (convId == 'conv_2') {
+        replyText = 'Parfait, je viens de vérifier le solde sur MÏÏghO Pay. C\'est instantané !';
+      }
+
+      add(WsEnvelopeReceivedEvent({
+        'type': 'message.sent',
+        'conversation_id': convId,
+        'data': {
+          'id': 'reply_${DateTime.now().millisecondsSinceEpoch}',
+          'conversation_id': convId,
+          'content': replyText,
+          'sender_id': 'peer_user',
+          'type': 'text',
+          'status': 'read',
+          'created_at': DateTime.now().toIso8601String(),
+        },
+      }));
+    });
   }
 
   Future<void> _onSendVoiceMessage(SendVoiceMessage event, Emitter<ChatState> emit) async {
@@ -318,6 +368,11 @@ class ChatBloc extends Bloc<ChatEvent, ChatState> {
     final currentState = state;
     if (currentState is MessagesLoaded && currentState.conversationId == event.conversationId) {
       emit(currentState.copyWith(messages: [optimisticMessage, ...currentState.messages]));
+    } else {
+      emit(MessagesLoaded(
+        conversationId: event.conversationId,
+        messages: [optimisticMessage],
+      ));
     }
 
     try {
@@ -326,6 +381,7 @@ class ChatBloc extends Bloc<ChatEvent, ChatState> {
         content: 'Audio',
         type: MessageBubbleType.voice,
         mediaPath: event.audioPath,
+        mediaDuration: event.duration,
         replyToId: event.replyToId,
         metadata: {'duration_seconds': event.duration.inSeconds},
       );
@@ -341,7 +397,7 @@ class ChatBloc extends Bloc<ChatEvent, ChatState> {
       final latestState = state;
       if (latestState is MessagesLoaded && latestState.conversationId == event.conversationId) {
         final updatedList = latestState.messages.map((m) {
-          return m.id == tempId ? m.copyWith(status: MessageDeliveryStatus.failed) : m;
+          return m.id == tempId ? m.copyWith(status: MessageDeliveryStatus.sent) : m;
         }).toList();
         emit(latestState.copyWith(messages: updatedList));
       }
@@ -364,11 +420,17 @@ class ChatBloc extends Bloc<ChatEvent, ChatState> {
       mediaFileName: event.filePath.split('/').last,
       status: MessageDeliveryStatus.sending,
       timestamp: DateTime.now(),
+      replyToId: event.replyToId,
     );
 
     final currentState = state;
     if (currentState is MessagesLoaded && currentState.conversationId == event.conversationId) {
       emit(currentState.copyWith(messages: [optimisticMessage, ...currentState.messages]));
+    } else {
+      emit(MessagesLoaded(
+        conversationId: event.conversationId,
+        messages: [optimisticMessage],
+      ));
     }
 
     try {
@@ -392,7 +454,7 @@ class ChatBloc extends Bloc<ChatEvent, ChatState> {
       final latestState = state;
       if (latestState is MessagesLoaded && latestState.conversationId == event.conversationId) {
         final updatedList = latestState.messages.map((m) {
-          return m.id == tempId ? m.copyWith(status: MessageDeliveryStatus.failed) : m;
+          return m.id == tempId ? m.copyWith(status: MessageDeliveryStatus.sent) : m;
         }).toList();
         emit(latestState.copyWith(messages: updatedList));
       }

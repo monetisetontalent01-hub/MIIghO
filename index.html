@@ -2968,9 +2968,67 @@ activeFeeRule = {
             document.getElementById('theme-text').innerText = target === 'dark' ? 'Mode Sombre' : 'Mode Clair';
         }
 
+        const chatConversations = {
+            'conv_0': {
+                name: 'Amina Diallo',
+                avatar: 'AD',
+                color: '#10B981',
+                status: '● En ligne • Chiffrement Signal Protocol',
+                messages: [
+                    { in: true, text: "Bonjour Mamadou ! Bienvenue sur l'écosystème souverain MÏÏghO.", time: "10:30 • Lu ✓✓" },
+                    { in: false, text: "Bonjour Amina ! La réactivité du chat et l'isolation financière sont opérationnelles.", time: "10:35 • Envoyé ✓✓" },
+                    { in: true, text: "Parfait, nous validons cette étape. On passe à la suite !", time: "10:42 • Lu ✓✓" }
+                ],
+                reply: "Merci pour ton message ! La synchronisation temps réel WebSocket fonctionne parfaitement 👍"
+            },
+            'conv_1': {
+                name: 'Équipe MÏÏghO Core',
+                avatar: 'EC',
+                color: 'var(--primary)',
+                status: '● 8 membres • Canal technique',
+                messages: [
+                    { in: true, text: "Bienvenue dans le salon technique MÏÏghO Core.", time: "09:00 • Lu ✓✓" },
+                    { in: true, text: "Cadrage technique et revue de sprint à 10h.", time: "09:15 • Lu ✓✓" }
+                ],
+                reply: "Équipe MÏÏghO : Message reçu et synchronisé sur le canal de groupe !"
+            },
+            'conv_2': {
+                name: 'Kofi Mensah',
+                avatar: 'KM',
+                color: 'var(--gold)',
+                status: '● Récemment vu • MÏÏghO ID Vérifié ✓',
+                messages: [
+                    { in: false, text: "Salut Kofi ! Tu as pu tester le transfert via MÏÏghO Pay ?", time: "Hier • Lu ✓✓" },
+                    { in: true, text: "Message vocal reçu (0:18) 🎵", time: "Hier • Lu ✓✓" }
+                ],
+                reply: "Salut ! Oui, le transfert de fonds instantané a été crédité sans frais cachés."
+            }
+        };
+
+        let currentActiveConvId = 'conv_0';
+
         function loadChat(name, id) {
-            document.getElementById('chat-name').innerText = name;
-            document.getElementById('chat-avatar').innerText = name.split(' ').map(n=>n[0]).join('').substring(0,2);
+            currentActiveConvId = id;
+            const conv = chatConversations[id];
+            if (!conv) return;
+
+            document.getElementById('chat-name').innerText = conv.name;
+            document.getElementById('chat-avatar').innerText = conv.avatar;
+            document.getElementById('chat-avatar').style.background = conv.color;
+
+            // Highlight in list
+            document.querySelectorAll('.conv-item').forEach(el => el.classList.remove('active'));
+            event?.currentTarget?.classList?.add('active');
+
+            const container = document.getElementById('chat-msg-container');
+            container.innerHTML = '';
+            conv.messages.forEach(m => {
+                const bubble = document.createElement('div');
+                bubble.className = `message-bubble ${m.in ? 'msg-in' : 'msg-out'}`;
+                bubble.innerHTML = `${m.text}<div class="msg-meta">${m.time}</div>`;
+                container.appendChild(bubble);
+            });
+            container.scrollTop = container.scrollHeight;
         }
 
         function sendMessage() {
@@ -2980,10 +3038,24 @@ activeFeeRule = {
             const container = document.getElementById('chat-msg-container');
             const bubble = document.createElement('div');
             bubble.className = 'message-bubble msg-out';
-            bubble.innerHTML = `${text}<div class="msg-meta">À l'instant • Envoyé ✓</div>`;
+            bubble.innerHTML = `${text}<div class="msg-meta">À l'instant • Envoyé ✓✓</div>`;
             container.appendChild(bubble);
             input.value = '';
             container.scrollTop = container.scrollHeight;
+
+            const conv = chatConversations[currentActiveConvId];
+            if (conv) {
+                conv.messages.push({ in: false, text: text, time: "À l'instant • Envoyé ✓✓" });
+                // Simulate peer response after 1.2s
+                setTimeout(() => {
+                    const replyBubble = document.createElement('div');
+                    replyBubble.className = 'message-bubble msg-in';
+                    replyBubble.innerHTML = `${conv.reply}<div class="msg-meta">À l'instant • Lu ✓✓</div>`;
+                    container.appendChild(replyBubble);
+                    container.scrollTop = container.scrollHeight;
+                    conv.messages.push({ in: true, text: conv.reply, time: "À l'instant • Lu ✓✓" });
+                }, 1200);
+            }
         }
 
         document.getElementById('chat-text-input')?.addEventListener('keypress', function(e) {
