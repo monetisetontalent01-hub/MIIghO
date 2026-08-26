@@ -712,6 +712,12 @@
             font-size: 11px;
             font-weight: 700;
             cursor: pointer;
+        }
+
+        .bottom-nav-item.active {
+            color: var(--primary);
+        }
+
         /* ══════════ MOBILE TOP APP BAR ══════════ */
         .mobile-top-bar {
             display: none;
@@ -741,16 +747,41 @@
         }
 
         @media (max-width: 900px) {
-            body { flex-direction: column; }
-            .sidebar { display: none; }
-            .mobile-top-bar { display: flex; }
-            .mobile-bottom-nav { display: flex; }
-            .app-main { padding-bottom: 74px; }
+            html, body {
+                width: 100%;
+                min-height: 100vh;
+                overflow-x: hidden;
+                overflow-y: auto;
+                display: flex;
+                flex-direction: column;
+            }
+            .sidebar {
+                display: none !important;
+            }
+            .mobile-top-bar {
+                display: flex !important;
+                width: 100%;
+                box-sizing: border-box;
+            }
+            .mobile-bottom-nav {
+                display: flex !important;
+                width: 100%;
+                box-sizing: border-box;
+            }
+            .app-main {
+                width: 100%;
+                height: auto;
+                min-height: calc(100vh - 56px);
+                padding-bottom: 74px;
+                overflow-x: hidden;
+                box-sizing: border-box;
+            }
             .dash-container {
-                padding: 16px;
-                max-width: 580px;
+                padding: 16px 14px;
+                max-width: 520px;
                 margin: 0 auto;
                 width: 100%;
+                box-sizing: border-box;
             }
             .dash-grid {
                 grid-template-columns: 1fr;
@@ -758,9 +789,10 @@
             }
             .wallet-card {
                 padding: 20px 16px;
+                box-sizing: border-box;
             }
             .wallet-balance {
-                font-size: 30px;
+                font-size: 28px;
             }
             .wallet-actions {
                 display: grid;
@@ -772,6 +804,7 @@
                 padding: 11px 12px;
                 font-size: 13px;
                 width: 100%;
+                box-sizing: border-box;
             }
             .dash-header {
                 flex-direction: column;
@@ -785,23 +818,42 @@
             }
             .chat-layout {
                 flex-direction: column;
-                height: calc(100vh - 126px);
+                height: calc(100vh - 120px);
                 position: relative;
                 overflow: hidden;
-                max-width: 580px;
+                max-width: 520px;
                 margin: 0 auto;
                 width: 100%;
+                box-sizing: border-box;
             }
-            .chat-list-panel { width: 100%; height: 100%; display: flex; flex-direction: column; }
-            .chat-active-panel { width: 100%; height: 100%; display: none; flex-direction: column; }
-            .chat-layout.show-mobile-detail .chat-list-panel { display: none; }
-            .chat-layout.show-mobile-detail .chat-active-panel { display: flex; }
-            .chat-back-mobile { display: inline-flex !important; }
+            .chat-list-panel {
+                width: 100% !important;
+                height: 100% !important;
+                display: flex !important;
+                flex-direction: column;
+                border-right: none;
+            }
+            .chat-active-panel {
+                width: 100% !important;
+                height: 100% !important;
+                display: none !important;
+                flex-direction: column;
+            }
+            .chat-layout.show-mobile-detail .chat-list-panel {
+                display: none !important;
+            }
+            .chat-layout.show-mobile-detail .chat-active-panel {
+                display: flex !important;
+            }
+            .chat-back-mobile {
+                display: inline-flex !important;
+            }
             .modal-content {
                 width: 94vw !important;
-                max-width: 480px !important;
+                max-width: 460px !important;
                 margin: auto;
                 padding: 20px 16px !important;
+                box-sizing: border-box;
             }
         }
     </style>
