@@ -9,6 +9,17 @@ class AppConfig {
     required this.environment,
   });
 
+  /// Local development: connects to Go backend on localhost:8080
+  factory AppConfig.local() {
+    return AppConfig(
+      baseUrl: const String.fromEnvironment('API_URL',
+          defaultValue: 'http://localhost:8080/api/v1'),
+      wsUrl: const String.fromEnvironment('WS_URL',
+          defaultValue: 'ws://localhost:8080/ws'),
+      environment: 'local',
+    );
+  }
+
   factory AppConfig.dev() {
     return AppConfig(
       baseUrl: 'https://dev-api.miigho.com',

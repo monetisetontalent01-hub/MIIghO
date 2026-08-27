@@ -3,7 +3,7 @@ import 'package:flutter_bloc/flutter_bloc.dart';
 import '../../data/chat_repository.dart';
 import '../../models/chat_models.dart';
 import '../../presentation/widgets/message_bubble.dart' show MessageBubbleType, MessageReactionData;
-import '../../../shared/widgets/conversation_tile.dart' show MessageDeliveryStatus;
+import 'package:miigho/shared/widgets/conversation_tile.dart' show MessageDeliveryStatus;
 
 // Events
 abstract class ChatEvent {}

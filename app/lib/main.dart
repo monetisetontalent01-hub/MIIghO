@@ -3,6 +3,7 @@ import 'package:flutter_bloc/flutter_bloc.dart';
 import 'app.dart';
 import 'core/config/app_config.dart';
 import 'core/network/api_client.dart';
+import 'core/network/ws_client.dart';
 import 'core/storage/local_database.dart';
 import 'core/storage/secure_storage.dart';
 import 'core/network/connectivity_service.dart';
@@ -13,7 +14,7 @@ void main() async {
   // Initialize services
   final secureStorage = SecureStorageService();
   final database = MiighoDatabase();
-  final config = AppConfig.dev();
+  final config = AppConfig.local();
   final apiClient = ApiClient(config.baseUrl, secureStorage);
   final wsClient = WsClient(config.wsUrl);
   final connectivityService = ConnectivityService();

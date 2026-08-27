@@ -1,4 +1,5 @@
-import '../../../shared/widgets/conversation_tile.dart' show MessageDeliveryStatus, ConversationMessageType;
+import 'dart:convert';
+import 'package:miigho/shared/widgets/conversation_tile.dart' show MessageDeliveryStatus, ConversationMessageType;
 import '../presentation/widgets/message_bubble.dart' show MessageBubbleType, MessageReactionData, MessageReplyData;
 
 class MiighoConversation {
@@ -210,6 +211,14 @@ class MiighoMessageItem {
     final durationSeconds = metadata?['duration_seconds'] as int?;
 
     String contentStr = json['content'] as String? ?? '';
+    if (contentStr.isNotEmpty) {
+      try {
+        final decodedBytes = base64.decode(contentStr);
+        contentStr = utf8.decode(decodedBytes);
+      } catch (_) {
+        // Kept as plain text
+      }
+    }
 
     return MiighoMessageItem(
       id: json['id'] as String,

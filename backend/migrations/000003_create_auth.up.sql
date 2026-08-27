@@ -1,18 +1,19 @@
 CREATE TABLE auth_tokens (
-    id UUID PRIMARY KEY,
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
-    refresh_token VARCHAR(255) NOT NULL UNIQUE,
+    token_hash VARCHAR(255) NOT NULL,
+    type VARCHAR(50) NOT NULL DEFAULT 'access',
     expires_at TIMESTAMPTZ NOT NULL,
     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     revoked_at TIMESTAMPTZ
 );
 
-CREATE INDEX idx_auth_tokens_refresh_token ON auth_tokens(refresh_token);
+CREATE INDEX idx_auth_tokens_token_hash ON auth_tokens(token_hash);
 CREATE INDEX idx_auth_tokens_user_id ON auth_tokens(user_id);
 
 CREATE TABLE otp_codes (
-    id UUID PRIMARY KEY,
-    phone_number VARCHAR(20) NOT NULL,
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    phone_number VARCHAR(20) NOT NULL UNIQUE,
     code_hash VARCHAR(255) NOT NULL,
     attempts INT NOT NULL DEFAULT 0,
     expires_at TIMESTAMPTZ NOT NULL,

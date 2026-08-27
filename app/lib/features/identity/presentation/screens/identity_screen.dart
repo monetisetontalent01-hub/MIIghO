@@ -4,7 +4,8 @@ import 'package:go_router/go_router.dart';
 import '../../../../core/theme/colors.dart';
 import '../../../../shared/widgets/miigho_avatar.dart';
 import '../bloc/identity_bloc.dart';
-import '../data/identity_repository.dart';
+import '../../data/identity_repository.dart';
+import 'edit_profile_screen.dart';
 
 class IdentityScreen extends StatelessWidget {
   const IdentityScreen({super.key});
@@ -24,7 +25,7 @@ class IdentityScreen extends StatelessWidget {
             tooltip: 'Modifier mon profil',
             onPressed: () {
               Navigator.of(context).push(
-                MaterialPageRoute(builder: (_) => const _EditProfileWrapper()),
+                MaterialPageRoute(builder: (_) => const EditProfileScreen()),
               );
             },
           ),
@@ -52,7 +53,7 @@ class IdentityScreen extends StatelessWidget {
             profile = state.profile;
             sessions = state.sessions;
           } else {
-            profile = const UserProfile(
+            profile = UserProfile(
               id: 'usr_demo_01',
               miighoId: 'MG-9824-CIV',
               displayName: 'Mamadou Koné',
@@ -62,7 +63,7 @@ class IdentityScreen extends StatelessWidget {
               country: 'Côte d\'Ivoire 🇨🇮',
               kycLevel: 'Niveau 2 (Vérifié)',
               isVerified: true,
-              createdAt: null as dynamic,
+              createdAt: DateTime(2026, 1, 1),
             );
           }
 

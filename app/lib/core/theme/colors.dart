@@ -51,6 +51,8 @@ class MiighoColors {
   // Rétrocompatibilité text
   static const Color textLight = lightTextPrimary;
   static const Color textDark = textPrimary;
+  static const Color textTertiary = textMuted;
+  static const Color lightTextTertiary = lightTextMuted;
 
   // === Bordures & Séparateurs (Dark) ===
   static const Color borderSubtle = Color(0x0FFFFFFF); // 6% white

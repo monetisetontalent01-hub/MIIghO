@@ -2,7 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import '../../../../core/theme/colors.dart';
 import '../../../../shared/widgets/miigho_avatar.dart';
-import '../../../contacts/bloc/contacts_bloc.dart';
+import '../../../contacts/presentation/bloc/contacts_bloc.dart';
 import '../../../contacts/models/contact_model.dart';
 
 class NewChatDialog extends StatefulWidget {
@@ -118,7 +118,7 @@ class _NewChatDialogState extends State<NewChatDialog> {
                                   id: _searchController.text.trim(),
                                   displayName: _searchController.text.trim(),
                                   phoneNumber: _searchController.text.trim(),
-                                  isRegistered: true,
+                                  isMiighoUser: true,
                                 ),
                               );
                             },

@@ -28,6 +28,9 @@ class Contact extends Equatable {
     this.lastSeen,
   });
 
+  bool get isRegistered => isMiighoUser;
+  String? get statusMessage => bio;
+
   /// Factory from JSON map (from MÏÏghO backend API)
   factory Contact.fromJson(Map<String, dynamic> json) {
     return Contact(

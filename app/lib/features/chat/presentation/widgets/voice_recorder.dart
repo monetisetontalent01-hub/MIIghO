@@ -1,11 +1,11 @@
 import 'dart:async';
-import 'dart:io';
 import 'dart:math' as math;
 import 'dart:ui';
 import 'package:flutter/material.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:record/record.dart';
 import '../../../../core/theme/colors.dart';
+import '../../../../core/utils/file_helper.dart';
 
 /// State of the voice recorder.
 enum VoiceRecorderState {
@@ -192,10 +192,7 @@ class _VoiceRecorderState extends State<VoiceRecorder> with SingleTickerProvider
     try {
       final path = await _audioRecorder.stop();
       if (path != null) {
-        final file = File(path);
-        if (await file.exists()) {
-          await file.delete();
-        }
+        await tryDeleteFile(path);
       }
     } catch (_) {}
 

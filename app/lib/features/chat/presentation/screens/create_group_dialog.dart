@@ -3,7 +3,7 @@ import 'package:flutter_bloc/flutter_bloc.dart';
 import '../../../../core/theme/colors.dart';
 import '../../../../shared/widgets/miigho_avatar.dart';
 import '../../../../shared/widgets/miigho_button.dart';
-import '../../../contacts/bloc/contacts_bloc.dart';
+import '../../../contacts/presentation/bloc/contacts_bloc.dart';
 import '../../../contacts/models/contact_model.dart';
 
 class CreateGroupDialog extends StatefulWidget {

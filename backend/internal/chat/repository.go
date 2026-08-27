@@ -246,10 +246,11 @@ func (r *PostgresChatRepository) GetMessages(ctx context.Context, conversationID
 	}
 
 	query := `
-		SELECT id, conversation_id, sender_id, type, COALESCE(content, ''), reply_to, created_at, updated_at, deleted_at
-		FROM messages
-		WHERE conversation_id = $1 AND deleted_at IS NULL
-		ORDER BY created_at DESC
+		SELECT m.id, m.conversation_id, m.sender_id, m.type, COALESCE(m.content, ''), m.reply_to, m.created_at, m.updated_at, m.deleted_at,
+		       CASE WHEN EXISTS (SELECT 1 FROM read_receipts rr WHERE rr.message_id = m.id) THEN 'read' ELSE 'sent' END AS status
+		FROM messages m
+		WHERE m.conversation_id = $1 AND m.deleted_at IS NULL
+		ORDER BY m.created_at DESC
 		LIMIT $2
 	`
 	rows, err := r.pool.Query(ctx, query, conversationID, limit)
@@ -262,11 +263,12 @@ func (r *PostgresChatRepository) GetMessages(ctx context.Context, conversationID
 	for rows.Next() {
 		var m Message
 		var contentStr string
-		if err := rows.Scan(&m.ID, &m.ConversationID, &m.SenderID, &m.Type, &contentStr, &m.ReplyToID, &m.CreatedAt, &m.UpdatedAt, &m.DeletedAt); err != nil {
+		var statusStr string
+		if err := rows.Scan(&m.ID, &m.ConversationID, &m.SenderID, &m.Type, &contentStr, &m.ReplyToID, &m.CreatedAt, &m.UpdatedAt, &m.DeletedAt, &statusStr); err != nil {
 			return nil, "", err
 		}
 		m.Content = []byte(contentStr)
-		m.Status = StatusSent
+		m.Status = MessageStatus(statusStr)
 
 		// Fetch reactions for this message
 		reactQuery := "SELECT message_id, user_id, emoji, created_at FROM message_reactions WHERE message_id = $1"
@@ -289,20 +291,22 @@ func (r *PostgresChatRepository) GetMessages(ctx context.Context, conversationID
 
 func (r *PostgresChatRepository) GetMessage(ctx context.Context, messageID uuid.UUID) (*Message, error) {
 	query := `
-		SELECT id, conversation_id, sender_id, type, COALESCE(content, ''), reply_to, created_at, updated_at, deleted_at
-		FROM messages
-		WHERE id = $1
+		SELECT m.id, m.conversation_id, m.sender_id, m.type, COALESCE(m.content, ''), m.reply_to, m.created_at, m.updated_at, m.deleted_at,
+		       CASE WHEN EXISTS (SELECT 1 FROM read_receipts rr WHERE rr.message_id = m.id) THEN 'read' ELSE 'sent' END AS status
+		FROM messages m
+		WHERE m.id = $1
 	`
 	var m Message
 	var contentStr string
+	var statusStr string
 	err := r.pool.QueryRow(ctx, query, messageID).Scan(
-		&m.ID, &m.ConversationID, &m.SenderID, &m.Type, &contentStr, &m.ReplyToID, &m.CreatedAt, &m.UpdatedAt, &m.DeletedAt,
+		&m.ID, &m.ConversationID, &m.SenderID, &m.Type, &contentStr, &m.ReplyToID, &m.CreatedAt, &m.UpdatedAt, &m.DeletedAt, &statusStr,
 	)
 	if err != nil {
 		return nil, err
 	}
 	m.Content = []byte(contentStr)
-	m.Status = StatusSent
+	m.Status = MessageStatus(statusStr)
 	return &m, nil
 }
 

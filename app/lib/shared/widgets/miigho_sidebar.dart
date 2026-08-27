@@ -176,7 +176,7 @@ class MiighoSidebar extends StatelessWidget {
                     ),
                     child: Row(
                       children: [
-                        const MiighoAvatar(
+                        MiighoAvatar(
                           name: DemoDataProvider.currentUser.displayName,
                           size: MiighoAvatarSize.sm,
                           isOnline: true,

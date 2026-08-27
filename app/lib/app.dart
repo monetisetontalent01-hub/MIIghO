@@ -51,6 +51,7 @@ class MiighoApp extends StatelessWidget {
     );
     final contactsRepository = ContactsRepository(
       apiClient: apiClient,
+      secureStorage: secureStorage,
       database: database,
     );
     final payRepository = PayRepository(

@@ -1,4 +1,3 @@
-import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 import '../../../../core/theme/colors.dart';
@@ -439,6 +438,7 @@ class _MessageBubbleState extends State<MessageBubble> {
   }
 
   Widget _buildImageMessage(BuildContext context, bool isDark) {
+    final imgUrl = widget.mediaUrl ?? widget.mediaPath;
     return GestureDetector(
       onTap: widget.onMediaTap,
       child: Column(
@@ -446,35 +446,34 @@ class _MessageBubbleState extends State<MessageBubble> {
         children: [
           ClipRRect(
             borderRadius: BorderRadius.circular(12.0),
-            child: widget.mediaPath != null
-                ? Image.file(
-                    File(widget.mediaPath!),
+            child: imgUrl != null && imgUrl.isNotEmpty
+                ? CachedNetworkImage(
+                    imageUrl: imgUrl,
                     fit: BoxFit.cover,
                     width: double.infinity,
                     height: 200,
+                    placeholder: (context, url) => Container(
+                      height: 200,
+                      color: isDark ? Colors.grey.shade900 : Colors.grey.shade200,
+                      child: const Center(
+                        child: CircularProgressIndicator(strokeWidth: 2),
+                      ),
+                    ),
+                    errorWidget: (context, url, error) => Container(
+                      height: 200,
+                      color: isDark ? Colors.grey.shade900 : Colors.grey.shade200,
+                      child: const Center(
+                        child: Icon(Icons.broken_image_rounded, size: 48, color: Colors.grey),
+                      ),
+                    ),
                   )
-                : (widget.mediaUrl != null
-                    ? CachedNetworkImage(
-                        imageUrl: widget.mediaUrl!,
-                        fit: BoxFit.cover,
-                        width: double.infinity,
-                        height: 200,
-                        placeholder: (context, url) => Container(
-                          height: 200,
-                          color: isDark ? Colors.grey.shade900 : Colors.grey.shade200,
-                          child: const Center(
-                            child: CircularProgressIndicator(strokeWidth: 2),
-                          ),
-                        ),
-                        errorWidget: (context, url, error) => Container(
-                          height: 200,
-                          color: isDark ? Colors.grey.shade900 : Colors.grey.shade200,
-                          child: const Center(
-                            child: Icon(Icons.broken_image_rounded, size: 40, color: Colors.grey),
-                          ),
-                        ),
-                      )
-                    : const SizedBox.shrink()),
+                : Container(
+                    height: 200,
+                    color: isDark ? Colors.grey.shade900 : Colors.grey.shade200,
+                    child: const Center(
+                      child: Icon(Icons.image_rounded, size: 48, color: Colors.grey),
+                    ),
+                  ),
           ),
           if (widget.content.isNotEmpty) ...[
             const SizedBox(height: 6.0),

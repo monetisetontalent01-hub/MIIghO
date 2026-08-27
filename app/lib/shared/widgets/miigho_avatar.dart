@@ -1,4 +1,4 @@
-import 'dart:io';
+
 import 'package:flutter/material.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 import '../../core/theme/colors.dart';
@@ -43,7 +43,8 @@ enum PresenceStatus {
 /// - Interactive tap callbacks and custom badge overlays
 class MiighoAvatar extends StatelessWidget {
   final String? imageUrl;
-  final File? imageFile;
+  final String? avatarUrl;
+  final dynamic imageFile;
   final String? assetPath;
   final String? name;
   final String? initials;
@@ -64,6 +65,7 @@ class MiighoAvatar extends StatelessWidget {
   const MiighoAvatar({
     super.key,
     this.imageUrl,
+    this.avatarUrl,
     this.imageFile,
     this.assetPath,
     this.name,
@@ -180,18 +182,7 @@ class MiighoAvatar extends StatelessWidget {
   }
 
   Widget _buildAvatarContent(BuildContext context) {
-    // 1. Check local file image
-    if (imageFile != null) {
-      return Image.file(
-        imageFile!,
-        fit: BoxFit.cover,
-        width: _effectiveDiameter,
-        height: _effectiveDiameter,
-        errorBuilder: (context, error, stackTrace) => _buildFallback(context),
-      );
-    }
-
-    // 2. Check asset image
+    // 1. Check asset image
     if (assetPath != null && assetPath!.isNotEmpty) {
       return Image.asset(
         assetPath!,
@@ -202,10 +193,11 @@ class MiighoAvatar extends StatelessWidget {
       );
     }
 
-    // 3. Check remote image URL
-    if (imageUrl != null && imageUrl!.trim().isNotEmpty) {
+    // 2. Check remote image URL (imageUrl or avatarUrl)
+    final effectiveUrl = (imageUrl ?? avatarUrl)?.trim();
+    if (effectiveUrl != null && effectiveUrl.isNotEmpty) {
       return CachedNetworkImage(
-        imageUrl: imageUrl!.trim(),
+        imageUrl: effectiveUrl,
         fit: BoxFit.cover,
         width: _effectiveDiameter,
         height: _effectiveDiameter,
