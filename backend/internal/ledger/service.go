@@ -30,11 +30,14 @@ func (s *Service) seedSandboxDemoData() {
 	}
 	aminaUserID, _ := uuid.Parse("00000000-0000-0000-0000-000000000002")
 
-	// Ensure accounts exist
 	userAcc, _ := s.GetOrCreateUserAccount(ctx, demoUserID, "FCFA", "Compte Principal (Mamadou Koné)")
 	aminaAcc, _ := s.GetOrCreateUserAccount(ctx, aminaUserID, "FCFA", "Compte Amina Diallo")
 	momoPool, _ := s.repo.GetSystemAccount(ctx, "MoMo Settlement Pool", "FCFA", Liability)
 	escrowPool, _ := s.repo.GetSystemAccount(ctx, "Marketplace Escrow Account", "FCFA", Liability)
+
+	if userAcc == nil || aminaAcc == nil || momoPool == nil || escrowPool == nil {
+		return
+	}
 
 	bal, _ := s.repo.GetBalance(ctx, userAcc.ID)
 	if bal == 0 {
