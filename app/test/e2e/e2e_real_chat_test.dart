@@ -2,6 +2,7 @@ import 'dart:async';
 import 'dart:io';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:miigho/core/config/app_config.dart';
+import 'package:miigho/core/models/country.dart';
 import 'package:miigho/core/network/api_client.dart';
 import 'package:miigho/core/network/ws_client.dart';
 import 'package:miigho/core/storage/secure_storage.dart';
@@ -27,12 +28,22 @@ void main() {
       print('[E2E SETUP] Backend WS URL: ${config.wsUrl}');
     });
 
-    test('Full E2E Flow: Auth A/B, Conversation, REST Send, WS Delivery, Reply, Read Receipt, DB Persistence', () async {
-      print('\n=== ÉTAPE 1 : AUTHENTIFICATION UTILISATEUR A & B ===');
+    test('Full E2E Flow with RDC Users (+243): Auth A/B, Conversation, REST Send, WS Delivery, Reply, Read Receipt, DB Persistence', () async {
+      print('\n=== ÉTAPE 1 : AUTHENTIFICATION RDC UTILISATEUR A & B (+243) ===');
       
-      final ts = (DateTime.now().millisecondsSinceEpoch % 100000000).toString().padLeft(8, '0');
-      final phoneA = '+221771$ts';
-      final phoneB = '+221772$ts';
+      final ts = (DateTime.now().millisecondsSinceEpoch % 1000000).toString().padLeft(6, '0');
+      // Test input format from user UI (e.g. '0812' + ts for RDC)
+      final rawInputA = '0812$ts';
+      final rawInputB = '0899$ts';
+
+      // Normalized via Country.rdc model
+      final phoneA = Country.rdc.formatToE164(rawInputA);
+      final phoneB = Country.rdc.formatToE164(rawInputB);
+
+      print('A (RDC) -> Saisie "$rawInputA" normalisée en E.164 : $phoneA');
+      print('B (RDC) -> Saisie "$rawInputB" normalisée en E.164 : $phoneB');
+      expect(phoneA.startsWith('+243'), true);
+      expect(phoneB.startsWith('+243'), true);
 
       // Instance A
       final storageA = SecureStorageService.inMemory();
@@ -41,8 +52,8 @@ void main() {
 
       print('A -> Envoi OTP pour $phoneA...');
       await authRepoA.sendOTP(phoneA);
-      print('A -> Validation OTP 123456...');
-      final authA = await authRepoA.verifyOTP(phoneA, '123456', 'device_test_A');
+      print('A -> Validation OTP 123456 (Dev mode)...');
+      final authA = await authRepoA.verifyOTP(phoneA, '123456', 'device_test_A_RDC');
       print('A -> Authentifié avec succès ! UserID=${authA.userId}, AccessToken=${authA.accessToken.substring(0, 16)}...');
       expect(authA.userId.isNotEmpty, true, reason: 'UserID A doit être renseigné');
       expect(authA.accessToken.isNotEmpty, true, reason: 'AccessToken A doit être renseigné');
@@ -54,8 +65,8 @@ void main() {
 
       print('B -> Envoi OTP pour $phoneB...');
       await authRepoB.sendOTP(phoneB);
-      print('B -> Validation OTP 123456...');
-      final authB = await authRepoB.verifyOTP(phoneB, '123456', 'device_test_B');
+      print('B -> Validation OTP 123456 (Dev mode)...');
+      final authB = await authRepoB.verifyOTP(phoneB, '123456', 'device_test_B_RDC');
       print('B -> Authentifié avec succès ! UserID=${authB.userId}, AccessToken=${authB.accessToken.substring(0, 16)}...');
       expect(authB.userId.isNotEmpty, true, reason: 'UserID B doit être renseigné');
       expect(authB.accessToken.isNotEmpty, true, reason: 'AccessToken B doit être renseigné');
@@ -93,7 +104,7 @@ void main() {
       // Wait for WS connections to establish
       await Future.delayed(const Duration(milliseconds: 500));
 
-      // B loads conversation messages
+      // B & A load conversation messages
       chatBlocB.add(LoadMessages(conv.id));
       chatBlocA.add(LoadMessages(conv.id));
       await Future.delayed(const Duration(milliseconds: 300));
@@ -130,7 +141,7 @@ void main() {
       });
 
       print('\n=== ÉTAPE 4 : ENVOI MESSAGE TEXTE A → B (REST POST) ===');
-      const textFromA = 'Salut B, validation E2E Flutter en direct !';
+      const textFromA = 'Mbote B ! Test E2E réel MÏÏghO depuis Kinshasa (RDC).';
       print('A -> POST /chat/conversations/${conv.id}/messages : "$textFromA"');
       final sentMsgA = await chatRepoA.sendMessage(
         conversationId: conv.id,
@@ -152,7 +163,7 @@ void main() {
       expect(receivedByB.isMe, false);
 
       print('\n=== ÉTAPE 6 : RÉPONSE B → A (REST POST) ET RÉCEPTION TEMPS RÉEL PAR A ===');
-      const textFromB = 'Salut A ! Message reçu avec succès via WebSocket.';
+      const textFromB = 'Mbote A ! Bien reçu via WebSocket en direct.';
       print('B -> POST /chat/conversations/${conv.id}/messages : "$textFromB"');
       final sentReplyB = await chatRepoB.sendMessage(
         conversationId: conv.id,
@@ -203,7 +214,7 @@ void main() {
       final secondPersisted = persistedMessages.firstWhere((m) => m.id == sentReplyB.id);
       expect(secondPersisted.content, textFromB);
 
-      print('\n=== TOUTES LES ÉTAPES E2E SONT VALIDÉES AVEC SUCCÈS [PASS] ===');
+      print('\n=== FLUX E2E RDC VALIDÉ AVEC SUCCÈS [PASS] ===');
 
       // Cleanup
       await subA.cancel();
@@ -211,6 +222,31 @@ void main() {
       wsClientA.disconnect();
       wsClientB.disconnect();
       wsClientF5.disconnect();
+    });
+
+    test('Multi-Country Validation: Côte d\'Ivoire (+225) Auth & Session Flow', () async {
+      print('\n=== VALIDATION MULTI-PAYS : CÔTE D\'IVOIRE (+225) ===');
+      
+      const rawInputCI = '0506169325';
+      final phoneCI = Country.coteDIvoire.formatToE164(rawInputCI);
+      print('CI -> Saisie "$rawInputCI" normalisée en E.164 : $phoneCI');
+      expect(phoneCI, '+2250506169325');
+      expect(Country.coteDIvoire.isValidE164(phoneCI), true);
+
+      final storageCI = SecureStorageService.inMemory();
+      final apiClientCI = ApiClient(config.baseUrl, storageCI);
+      final authRepoCI = AuthRepository(apiClientCI, storageCI);
+
+      print('CI -> Envoi OTP pour $phoneCI...');
+      await authRepoCI.sendOTP(phoneCI);
+
+      print('CI -> Validation OTP 123456 (Dev mode)...');
+      final authCI = await authRepoCI.verifyOTP(phoneCI, '123456', 'device_test_CI');
+      print('CI -> Authentifié avec succès ! UserID=${authCI.userId}, AccessToken=${authCI.accessToken.substring(0, 16)}...');
+      expect(authCI.userId.isNotEmpty, true);
+      expect(authCI.accessToken.isNotEmpty, true);
+
+      print('\n=== VALIDATION CÔTE D\'IVOIRE VALIDÉE AVEC SUCCÈS [PASS] ===');
     });
   });
 }

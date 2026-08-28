@@ -1,30 +1,40 @@
-// This is a basic Flutter widget test.
-//
-// To perform an interaction with a widget in your test, use the WidgetTester
-// utility in the flutter_test package. For example, you can send tap and scroll
-// gestures. You can also use WidgetTester to find child widgets in the widget
-// tree, read text, and verify that the values of widget properties are correct.
-
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
-
-import 'package:miigho/main.dart';
+import 'package:miigho/core/models/country.dart';
+import 'package:miigho/features/auth/presentation/widgets/country_picker_modal.dart';
 
 void main() {
-  testWidgets('Counter increments smoke test', (WidgetTester tester) async {
-    // Build our app and trigger a frame.
-    await tester.pumpWidget(const MyApp());
+  testWidgets('CountryPickerModal displays supported African countries', (WidgetTester tester) async {
+    Country? selectedCountry;
 
-    // Verify that our counter starts at 0.
-    expect(find.text('0'), findsOneWidget);
-    expect(find.text('1'), findsNothing);
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: CountryPickerModal(
+            selectedCountry: Country.rdc,
+            onCountrySelected: (country) {
+              selectedCountry = country;
+            },
+          ),
+        ),
+      ),
+    );
 
-    // Tap the '+' icon and trigger a frame.
-    await tester.tap(find.byIcon(Icons.add));
+    // Verify modal title and country listings
+    expect(find.text('Choisir un pays'), findsOneWidget);
+    expect(find.text('RD Congo'), findsOneWidget);
+    expect(find.text('Côte d\'Ivoire'), findsOneWidget);
+    expect(find.text('Sénégal'), findsOneWidget);
+    expect(find.text('Cameroun'), findsOneWidget);
+    expect(find.text('+243'), findsOneWidget);
+    expect(find.text('+225'), findsOneWidget);
+
+    // Tap Côte d'Ivoire
+    await tester.tap(find.text('Côte d\'Ivoire'));
     await tester.pump();
 
-    // Verify that our counter has incremented.
-    expect(find.text('0'), findsNothing);
-    expect(find.text('1'), findsOneWidget);
+    expect(selectedCountry, isNotNull);
+    expect(selectedCountry!.isoCode, 'CI');
+    expect(selectedCountry!.dialCode, '+225');
   });
 }

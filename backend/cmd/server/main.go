@@ -132,6 +132,7 @@ func main() {
 	e := echo.New()
 	e.HideBanner = true
 	e.Validator = validator
+	e.HTTPErrorHandler = common.ErrorHandler
 
 	// Global Middlewares
 	e.Use(middleware.RequestLogger(logger))
