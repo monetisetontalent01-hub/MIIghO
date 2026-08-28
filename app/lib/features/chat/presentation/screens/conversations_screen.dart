@@ -48,16 +48,22 @@ class _ConversationsScreenState extends State<ConversationsScreen> {
       backgroundColor: Colors.transparent,
       builder: (ctx) => NewChatDialog(
         onContactSelected: (contact) {
+          final recipientUuid = (contact.userId != null && contact.userId!.isNotEmpty)
+              ? contact.userId!
+              : contact.id;
+
+          debugPrint('=== CREATE CONVERSATION DEBUG ===');
+          debugPrint('recipientId: $recipientUuid');
+          debugPrint('recipientPhone: ${contact.phoneNumber}');
+          debugPrint('recipientName: ${contact.displayName}');
+          debugPrint('endpoint: POST /api/v1/chat/conversations');
+          debugPrint('payload: {"recipient_id": "$recipientUuid"}');
+
           context.read<ChatBloc>().add(
                 CreateConversationEvent(
-                  recipientId: contact.id,
+                  recipientId: recipientUuid,
                 ),
               );
-          if (widget.onConversationSelected != null) {
-            widget.onConversationSelected!(contact.id);
-          } else {
-            context.push('/conversations/${contact.id}');
-          }
         },
       ),
     );
@@ -73,7 +79,7 @@ class _ConversationsScreenState extends State<ConversationsScreen> {
           context.read<ChatBloc>().add(
                 CreateGroupEvent(
                   name: groupName,
-                  memberIds: members.map((m) => m.id).toList(),
+                  memberIds: members.map((m) => m.userId ?? m.id).toList(),
                 ),
               );
           ScaffoldMessenger.of(context).showSnackBar(
@@ -106,7 +112,25 @@ class _ConversationsScreenState extends State<ConversationsScreen> {
           ),
         ],
       ),
-      body: Column(
+      body: BlocListener<ChatBloc, ChatState>(
+        listener: (context, state) {
+          if (state is ConversationsLoaded && state.activeConversationId != null) {
+            final activeId = state.activeConversationId!;
+            if (widget.onConversationSelected != null) {
+              widget.onConversationSelected!(activeId);
+            } else {
+              context.push('/conversations/$activeId');
+            }
+          } else if (state is ChatError) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              SnackBar(
+                content: Text(state.message),
+                backgroundColor: Colors.redAccent,
+              ),
+            );
+          }
+        },
+        child: Column(
         children: [
           // Barre de Recherche
           Padding(
@@ -278,6 +302,7 @@ class _ConversationsScreenState extends State<ConversationsScreen> {
             ),
           ),
         ],
+      ),
       ),
       floatingActionButton: widget.isEmbedded
           ? null

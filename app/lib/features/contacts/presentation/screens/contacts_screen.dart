@@ -3,6 +3,7 @@ import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:go_router/go_router.dart';
 import '../../../../core/theme/colors.dart';
 import '../../../../shared/widgets/miigho_avatar.dart';
+import '../../../chat/presentation/bloc/chat_bloc.dart';
 import '../bloc/contacts_bloc.dart';
 import '../../models/contact_model.dart';
 
@@ -213,11 +214,19 @@ class _ContactsScreenState extends State<ContactsScreen> {
       trailing: IconButton(
         icon: const Icon(Icons.chat_bubble_outline_rounded, color: MiighoColors.primary),
         onPressed: () {
-          context.push('/conversations/${contact.id}');
+          final recipientUuid = (contact.userId != null && contact.userId!.isNotEmpty)
+              ? contact.userId!
+              : contact.id;
+          context.read<ChatBloc>().add(CreateConversationEvent(recipientId: recipientUuid));
+          context.go('/conversations');
         },
       ),
       onTap: () {
-        context.push('/conversations/${contact.id}');
+        final recipientUuid = (contact.userId != null && contact.userId!.isNotEmpty)
+            ? contact.userId!
+            : contact.id;
+        context.read<ChatBloc>().add(CreateConversationEvent(recipientId: recipientUuid));
+        context.go('/conversations');
       },
     );
   }

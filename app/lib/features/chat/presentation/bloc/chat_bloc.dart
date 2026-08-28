@@ -425,6 +425,10 @@ class ChatBloc extends Bloc<ChatEvent, ChatState> {
     emit(ChatLoading());
     try {
       final newConv = await chatRepository.createConversation(event.recipientId);
+      final existingIdx = _allConversations.indexWhere((c) => c.id == newConv.id);
+      if (existingIdx != -1) {
+        _allConversations.removeAt(existingIdx);
+      }
       _allConversations.insert(0, newConv);
       emit(ConversationsLoaded(List.from(_allConversations), activeConversationId: newConv.id));
     } catch (e) {

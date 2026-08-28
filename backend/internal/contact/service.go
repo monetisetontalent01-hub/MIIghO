@@ -38,6 +38,14 @@ func (s *ContactService) ListContacts(ctx context.Context, ownerID uuid.UUID) ([
 	return s.repo.ListContacts(ctx, ownerID)
 }
 
+func (s *ContactService) ListContactUsers(ctx context.Context, ownerID uuid.UUID) ([]ContactUser, error) {
+	return s.repo.ListContactUsers(ctx, ownerID)
+}
+
+func (s *ContactService) SearchUsers(ctx context.Context, currentUserID uuid.UUID, query string) ([]ContactUser, error) {
+	return s.repo.SearchUsers(ctx, currentUserID, query)
+}
+
 func (s *ContactService) BlockUser(ctx context.Context, ownerID, userID uuid.UUID) error {
 	return s.repo.UpdateContactStatus(ctx, ownerID, userID, true, false)
 }

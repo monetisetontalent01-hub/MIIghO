@@ -23,125 +23,12 @@ class ContactsRepository {
   /// Get locally cached or in-memory contacts
   List<Contact> get cachedContacts => List.unmodifiable(_cachedContacts);
 
-  /// Fetch local address book contacts (simulated device phonebook for African context)
+  /// Fetch local address book contacts (loads remote synced contacts or local cache)
   Future<List<Contact>> fetchLocalContacts() async {
-    // In production, flutter_contacts or fast_contacts would extract OS phonebook.
-    // We provide a realistic African phonebook dataset if local cache is empty.
     if (_cachedContacts.isNotEmpty) {
       return _cachedContacts;
     }
-
-    final localList = [
-      const Contact(
-        id: 'c1',
-        userId: 'usr_amina',
-        displayName: 'Amina Diallo',
-        phoneNumber: '+221771234567',
-        avatarUrl: 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=150',
-        bio: 'Entrepreneure & Tech Enthusiast | Dakar 🇸🇳',
-        isMiighoUser: true,
-        isFavorite: true,
-        isOnline: true,
-      ),
-      const Contact(
-        id: 'c2',
-        userId: 'usr_kofi',
-        displayName: 'Kofi Mensah',
-        phoneNumber: '+233241234567',
-        avatarUrl: 'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=150',
-        bio: 'Software Engineer @ MÏÏghO Accra 🇬🇭',
-        isMiighoUser: true,
-        isFavorite: true,
-        isOnline: false,
-      ),
-      const Contact(
-        id: 'c3',
-        userId: 'usr_fatou',
-        displayName: 'Fatou Sow',
-        phoneNumber: '+221782345678',
-        avatarUrl: 'https://images.unsplash.com/photo-1517841905240-472988babdf9?w=150',
-        bio: 'Designer UI/UX • Dakar 🇸🇳',
-        isMiighoUser: true,
-        isFavorite: false,
-        isOnline: true,
-      ),
-      const Contact(
-        id: 'c4',
-        userId: 'usr_samuel',
-        displayName: 'Samuel Eto\'o Junior',
-        phoneNumber: '+237691234567',
-        avatarUrl: 'https://images.unsplash.com/photo-1500648767791-00dcc994a43e?w=150',
-        bio: 'Finance & Mobile Money Douala 🇨🇲',
-        isMiighoUser: true,
-        isFavorite: false,
-        isOnline: false,
-      ),
-      const Contact(
-        id: 'c5',
-        userId: 'usr_zainab',
-        displayName: 'Zainab Al-Mansoor',
-        phoneNumber: '+212612345678',
-        avatarUrl: 'https://images.unsplash.com/photo-1544005313-94ddf0286df2?w=150',
-        bio: 'Casablanca 🇲🇦 • E-commerce manager',
-        isMiighoUser: true,
-        isFavorite: true,
-        isOnline: true,
-      ),
-      const Contact(
-        id: 'c6',
-        userId: 'usr_kwame',
-        displayName: 'Kwame Nkrumah',
-        phoneNumber: '+233201234567',
-        avatarUrl: null,
-        bio: 'Pan-African Community Builder 🇬🇭',
-        isMiighoUser: true,
-        isFavorite: false,
-        isOnline: false,
-      ),
-      const Contact(
-        id: 'c7',
-        userId: null,
-        displayName: 'Awa Traoré',
-        phoneNumber: '+22376123456',
-        avatarUrl: null,
-        bio: null,
-        isMiighoUser: false,
-        isFavorite: false,
-      ),
-      const Contact(
-        id: 'c8',
-        userId: null,
-        displayName: 'Bakary Cissé',
-        phoneNumber: '+2250712345678',
-        avatarUrl: null,
-        bio: null,
-        isMiighoUser: false,
-        isFavorite: false,
-      ),
-      const Contact(
-        id: 'c9',
-        userId: null,
-        displayName: 'Chinedu Okeke',
-        phoneNumber: '+2348012345678',
-        avatarUrl: null,
-        bio: null,
-        isMiighoUser: false,
-        isFavorite: false,
-      ),
-      const Contact(
-        id: 'c10',
-        userId: null,
-        displayName: 'Moussa Diop',
-        phoneNumber: '+221709876543',
-        avatarUrl: null,
-        bio: null,
-        isMiighoUser: false,
-        isFavorite: false,
-      ),
-    ];
-
-    _cachedContacts = localList;
-    return _cachedContacts;
+    return fetchRemoteContacts();
   }
 
   /// Sync phone numbers with MÏÏghO backend to discover registered users
@@ -154,17 +41,20 @@ class ContactsRepository {
 
       if (response.statusCode == 200 && response.data != null) {
         final data = response.data['data'] ?? response.data;
-        if (data is List) {
-          final registeredUsers = data.map((item) => Contact.fromJson(item as Map<String, dynamic>)).toList();
-          
-          // Merge remote users with local contacts
-          _cachedContacts = _cachedContacts.map((localContact) {
-            final match = registeredUsers.firstWhere(
-              (r) => r.phoneNumber == localContact.phoneNumber,
-              orElse: () => localContact,
+        if (data is Map<String, dynamic> && data['matched_contacts'] is List) {
+          final matches = data['matched_contacts'] as List;
+          final registeredUsers = matches.map((item) {
+            final m = item as Map<String, dynamic>;
+            return Contact(
+              id: m['user_id'] as String? ?? '',
+              userId: m['user_id'] as String?,
+              displayName: m['phone_number'] as String? ?? 'Utilisateur MÏÏghO',
+              phoneNumber: m['phone_number'] as String? ?? '',
+              isMiighoUser: true,
             );
-            return match;
           }).toList();
+
+          _cachedContacts = registeredUsers;
         }
       }
     } catch (e) {
@@ -187,18 +77,39 @@ class ContactsRepository {
         }
       }
     } catch (e) {
-      // Fallback to local
+      // Return cached contacts
     }
-    return fetchLocalContacts();
+    return _cachedContacts;
   }
 
-  /// Search contacts locally and remotely
+  /// Search contacts locally and remotely via backend
   Future<List<Contact>> searchContacts(String query) async {
-    if (query.trim().isEmpty) {
+    final trimmed = query.trim();
+    if (trimmed.isEmpty) {
       return _cachedContacts;
     }
 
-    final lowerQuery = query.toLowerCase().trim();
+    try {
+      final response = await apiClient.get(
+        '/contacts/search',
+        queryParameters: {'q': trimmed},
+      );
+
+      if (response.statusCode == 200 && response.data != null) {
+        final data = response.data['data'] ?? response.data;
+        if (data is List) {
+          final remoteResults = data.map((json) => Contact.fromJson(json as Map<String, dynamic>)).toList();
+          if (remoteResults.isNotEmpty) {
+            return remoteResults;
+          }
+        }
+      }
+    } catch (_) {
+      // Offline fallback
+    }
+
+    // Local filter fallback
+    final lowerQuery = trimmed.toLowerCase();
     return _cachedContacts.where((c) {
       final matchName = c.displayName.toLowerCase().contains(lowerQuery);
       final matchPhone = c.phoneNumber.contains(lowerQuery);

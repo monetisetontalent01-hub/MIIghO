@@ -5,11 +5,13 @@ import 'package:miigho/core/config/app_config.dart';
 import 'package:miigho/core/models/country.dart';
 import 'package:miigho/core/network/api_client.dart';
 import 'package:miigho/core/network/ws_client.dart';
+import 'package:miigho/core/storage/local_database.dart';
 import 'package:miigho/core/storage/secure_storage.dart';
 import 'package:miigho/features/auth/data/auth_repository.dart';
 import 'package:miigho/features/chat/data/chat_repository.dart';
 import 'package:miigho/features/chat/models/chat_models.dart';
 import 'package:miigho/features/chat/presentation/bloc/chat_bloc.dart';
+import 'package:miigho/features/contacts/data/contacts_repository.dart';
 import 'package:miigho/shared/widgets/conversation_tile.dart';
 
 class _RealHttpOverrides extends HttpOverrides {}
@@ -87,10 +89,31 @@ void main() {
         secureStorage: storageB,
       );
 
-      print('A -> Création conversation avec B (recipient_id: ${authB.userId})...');
-      final conv = await chatRepoA.createConversation(authB.userId);
+      final contactsRepoA = ContactsRepository(
+        apiClient: apiClientA,
+        secureStorage: storageA,
+        database: MiighoDatabase(),
+      );
+
+      print('\n=== ÉTAPE 2 : RECHERCHE DE CONTACT RÉEL VIA BACKEND (GET /contacts/search) ===');
+      print('A -> Recherche du contact B par numéro de téléphone ($phoneB)...');
+      final searchResults = await contactsRepoA.searchContacts(phoneB);
+      print('A -> Résultats de recherche trouvés : ${searchResults.length}');
+      expect(searchResults.isNotEmpty, true, reason: 'L\'utilisateur B doit être trouvé lors de la recherche');
+      final matchedB = searchResults.firstWhere((c) => c.phoneNumber == phoneB);
+      expect(matchedB.id, authB.userId, reason: 'Le contact trouvé doit correspondre au UUID réel de B');
+      print('A -> Contact B identifié : Nom="${matchedB.displayName}", UUID=${matchedB.id}');
+
+      print('\n=== ÉTAPE 2BIS : CRÉATION DE CONVERSATION ET VÉRIFICATION D\'IDEMPOTENCE ===');
+      print('A -> Création conversation avec B (recipient_id: ${matchedB.id})...');
+      final conv = await chatRepoA.createConversation(matchedB.id);
       print('Conversation créée avec succès ! ConvID=${conv.id}');
       expect(conv.id.isNotEmpty, true, reason: 'La conversation doit avoir un identifiant unique');
+
+      print('A -> Tentative de re-création de la même conversation directe (test idempotence duplicate)...');
+      final convDuplicate = await chatRepoA.createConversation(matchedB.id);
+      expect(convDuplicate.id, conv.id, reason: 'Le backend doit retourner la conversation existante sans créer de doublon');
+      print('Idempotence confirmée : ConvID existant retourné (${convDuplicate.id})');
 
       print('\n=== ÉTAPE 3 : INITIALISATION DES SESSIONS ET WEBSOCKET REALTIME ===');
       final chatBlocA = ChatBloc(chatRepository: chatRepoA);

@@ -2,6 +2,7 @@ package contact
 
 import (
 	"context"
+	"strings"
 
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5/pgxpool"
@@ -11,6 +12,8 @@ type ContactRepository interface {
 	BatchFindUsersByPhone(ctx context.Context, phones []string) ([]MatchedContact, error)
 	UpsertContact(ctx context.Context, contact *Contact) error
 	ListContacts(ctx context.Context, ownerID uuid.UUID) ([]*Contact, error)
+	ListContactUsers(ctx context.Context, ownerID uuid.UUID) ([]ContactUser, error)
+	SearchUsers(ctx context.Context, currentUserID uuid.UUID, query string) ([]ContactUser, error)
 	UpdateContactStatus(ctx context.Context, ownerID, userID uuid.UUID, isBlocked, isFav bool) error
 }
 
@@ -98,3 +101,79 @@ func (r *PostgresContactRepository) UpdateContactStatus(ctx context.Context, own
 	_, err := r.pool.Exec(ctx, "UPDATE contacts SET is_favorite = $1 WHERE user_id = $2 AND contact_user_id = $3", isFav, ownerID, userID)
 	return err
 }
+
+func (r *PostgresContactRepository) ListContactUsers(ctx context.Context, ownerID uuid.UUID) ([]ContactUser, error) {
+	sql := `
+		SELECT u.id, u.phone_number, 
+		       COALESCE(NULLIF(c.contact_name, ''), NULLIF(TRIM(CONCAT(u.first_name, ' ', u.last_name)), ''), u.phone_number) as display_name,
+		       u.avatar_url, u.status_message,
+		       c.is_favorite,
+		       EXISTS(SELECT 1 FROM blocked_users b WHERE b.blocker_id = c.user_id AND b.blocked_id = c.contact_user_id) AS is_blocked
+		FROM contacts c
+		JOIN users u ON u.id = c.contact_user_id AND u.deleted_at IS NULL
+		WHERE c.user_id = $1
+		ORDER BY c.is_favorite DESC, display_name ASC
+	`
+	rows, err := r.pool.Query(ctx, sql, ownerID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var users []ContactUser
+	for rows.Next() {
+		var u ContactUser
+		var avatar, status *string
+		if err := rows.Scan(&u.ID, &u.PhoneNumber, &u.DisplayName, &avatar, &status, &u.IsFavorite, &u.IsBlocked); err != nil {
+			return nil, err
+		}
+		u.AvatarURL = avatar
+		u.StatusMessage = status
+		u.IsMiighoUser = true
+		users = append(users, u)
+	}
+	return users, nil
+}
+
+func (r *PostgresContactRepository) SearchUsers(ctx context.Context, currentUserID uuid.UUID, query string) ([]ContactUser, error) {
+	trimmed := strings.TrimSpace(query)
+	if trimmed == "" {
+		return []ContactUser{}, nil
+	}
+
+	searchPattern := "%" + trimmed + "%"
+	sql := `
+		SELECT u.id, u.phone_number, 
+		       COALESCE(NULLIF(TRIM(CONCAT(u.first_name, ' ', u.last_name)), ''), u.phone_number) as display_name,
+		       u.avatar_url, u.status_message,
+		       COALESCE(c.is_favorite, false) as is_favorite,
+		       EXISTS(SELECT 1 FROM blocked_users b WHERE b.blocker_id = $1 AND b.blocked_id = u.id) AS is_blocked
+		FROM users u
+		LEFT JOIN contacts c ON c.user_id = $1 AND c.contact_user_id = u.id
+		WHERE u.id != $1 
+		  AND u.deleted_at IS NULL
+		  AND (u.phone_number ILIKE $2 OR u.first_name ILIKE $2 OR u.last_name ILIKE $2)
+		ORDER BY u.created_at DESC
+		LIMIT 30
+	`
+	rows, err := r.pool.Query(ctx, sql, currentUserID, searchPattern)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var users []ContactUser
+	for rows.Next() {
+		var u ContactUser
+		var avatar, status *string
+		if err := rows.Scan(&u.ID, &u.PhoneNumber, &u.DisplayName, &avatar, &status, &u.IsFavorite, &u.IsBlocked); err != nil {
+			return nil, err
+		}
+		u.AvatarURL = avatar
+		u.StatusMessage = status
+		u.IsMiighoUser = true
+		users = append(users, u)
+	}
+	return users, nil
+}
+

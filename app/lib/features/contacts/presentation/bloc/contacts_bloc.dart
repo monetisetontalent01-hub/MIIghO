@@ -182,20 +182,29 @@ class ContactsBloc extends Bloc<ContactsEvent, ContactsState> {
     }
   }
 
-  void _onSearchContacts(SearchContacts event, Emitter<ContactsState> emit) {
-    if (state is ContactsLoaded) {
-      final currentState = state as ContactsLoaded;
-      final query = event.query.toLowerCase().trim();
-
-      if (query.isEmpty) {
+  Future<void> _onSearchContacts(SearchContacts event, Emitter<ContactsState> emit) async {
+    final query = event.query.trim();
+    if (query.isEmpty) {
+      if (state is ContactsLoaded) {
+        final currentState = state as ContactsLoaded;
         emit(currentState.copyWith(
           searchQuery: '',
           searchResults: currentState.allContacts,
         ));
-      } else {
+      }
+      return;
+    }
+
+    try {
+      final results = await repository.searchContacts(query);
+      _emitCategorizedContacts(emit, results, searchQuery: event.query);
+    } catch (_) {
+      if (state is ContactsLoaded) {
+        final currentState = state as ContactsLoaded;
+        final lowerQuery = query.toLowerCase();
         final filtered = currentState.allContacts.where((c) {
-          final nameMatch = c.displayName.toLowerCase().contains(query);
-          final phoneMatch = c.phoneNumber.contains(query);
+          final nameMatch = c.displayName.toLowerCase().contains(lowerQuery);
+          final phoneMatch = c.phoneNumber.contains(lowerQuery);
           return nameMatch || phoneMatch;
         }).toList();
 

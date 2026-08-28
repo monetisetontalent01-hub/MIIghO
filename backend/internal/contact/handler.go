@@ -21,8 +21,32 @@ func (h *ContactHandler) RegisterRoutes(g *echo.Group, authMiddleware echo.Middl
 
 	cg.POST("/sync", h.syncContacts)
 	cg.GET("", h.listContacts)
+	cg.GET("/search", h.searchContacts)
 	cg.POST("/:id/block", h.blockUser)
 	cg.POST("/:id/favorite", h.favoriteUser)
+}
+
+func (h *ContactHandler) searchContacts(c echo.Context) error {
+	userIdent, err := identity.GetUserIdentity(c)
+	if err != nil {
+		return common.ErrUnauthorized
+	}
+	query := c.QueryParam("q")
+	if query == "" {
+		query = c.QueryParam("phone")
+	}
+	if query == "" {
+		return common.SuccessResponse(c, []ContactUser{})
+	}
+
+	results, err := h.service.SearchUsers(c.Request().Context(), userIdent.ID, query)
+	if err != nil {
+		return err
+	}
+	if results == nil {
+		results = []ContactUser{}
+	}
+	return common.SuccessResponse(c, results)
 }
 
 func (h *ContactHandler) syncContacts(c echo.Context) error {
@@ -42,9 +66,12 @@ func (h *ContactHandler) syncContacts(c echo.Context) error {
 
 func (h *ContactHandler) listContacts(c echo.Context) error {
 	userIdent, _ := identity.GetUserIdentity(c)
-	contacts, err := h.service.ListContacts(c.Request().Context(), userIdent.ID)
+	contacts, err := h.service.ListContactUsers(c.Request().Context(), userIdent.ID)
 	if err != nil {
 		return err
+	}
+	if contacts == nil {
+		contacts = []ContactUser{}
 	}
 	return common.SuccessResponse(c, contacts)
 }
