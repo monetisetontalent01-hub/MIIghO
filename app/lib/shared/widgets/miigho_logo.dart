@@ -30,7 +30,6 @@ class MiighoLogo extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final effectiveHeight = height ?? size;
-    final effectiveWidth = width ?? (variant == MiighoLogoVariant.full ? effectiveHeight * 3.2 : effectiveHeight);
     final theme = Theme.of(context);
     final isDark = theme.brightness == Brightness.dark;
 

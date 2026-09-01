@@ -119,8 +119,10 @@ func (s *AuthService) RefreshToken(ctx context.Context, refreshTokenStr string) 
 	// Single-use refresh token
 	s.repo.DeleteToken(ctx, token.ID)
 
-	// In real logic, we'd fetch the user here
-	user := &User{ID: token.UserID}
+	user, err := s.repo.FindUserByID(ctx, token.UserID)
+	if err != nil || user == nil {
+		user = &User{ID: token.UserID}
+	}
 
 	return s.generateTokenPair(ctx, user)
 }

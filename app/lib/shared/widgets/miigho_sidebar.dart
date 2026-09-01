@@ -6,6 +6,7 @@ import '../../core/models/module_status.dart';
 import '../../core/theme/colors.dart';
 import '../../core/theme/theme_cubit.dart';
 import '../../core/l10n/miigho_strings.dart';
+import '../../features/auth/presentation/bloc/auth_bloc.dart';
 import 'miigho_avatar.dart';
 import 'miigho_logo.dart';
 import 'miigho_status_badge.dart';
@@ -247,7 +248,7 @@ class MiighoSidebar extends StatelessWidget {
                         size: 20,
                         color: MiighoColors.error,
                       ),
-                      onPressed: () => context.go('/welcome'),
+                      onPressed: () => context.read<AuthBloc>().add(LogoutRequested()),
                     ),
                   ],
                 ),

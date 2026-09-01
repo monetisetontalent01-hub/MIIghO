@@ -60,7 +60,13 @@ class AuthBloc extends Bloc<AuthEvent, AuthState> {
 
   Future<void> _onAuthCheckRequested(AuthCheckRequested event, Emitter<AuthState> emit) async {
     final token = await authRepository.getAccessToken();
-    if (token != null) {
+    if (token == null || token.isEmpty) {
+      emit(AuthUnauthenticated());
+      return;
+    }
+
+    final isValid = await authRepository.validateOrRefreshSession();
+    if (isValid) {
       emit(AuthAuthenticated());
     } else {
       emit(AuthUnauthenticated());

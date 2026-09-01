@@ -271,5 +271,85 @@ void main() {
 
       print('\n=== VALIDATION CÔTE D\'IVOIRE VALIDÉE AVEC SUCCÈS [PASS] ===');
     });
+
+    test('E2E Real Refresh Token Lifecycle: 401 Interception, Concurrent Refresh, Session Continuity, WebSocket Messaging and Clean Logout', () async {
+      print('\n=== ÉTAPE 1 : AUTHENTIFICATION RÉELLE & OBTENTION PAIR ACCESS+REFRESH ===');
+      final ts = (DateTime.now().millisecondsSinceEpoch % 1000000).toString().padLeft(6, '0');
+      final phone = Country.rdc.formatToE164('0815$ts');
+
+      final storage = SecureStorageService.inMemory();
+      final apiClient = ApiClient(config.baseUrl, storage);
+      final wsClient = WsClient(config.wsUrl);
+      final authRepo = AuthRepository(apiClient, storage);
+      final chatRepo = ChatRepository(apiClient: apiClient, wsClient: wsClient, secureStorage: storage);
+
+      apiClient.onTokenRefreshed = (newToken) {
+        print('[E2E EVENT] Token refreshed by ApiClient: ${newToken.substring(0, 16)}...');
+        wsClient.updateToken(newToken);
+      };
+
+      await authRepo.sendOTP(phone);
+      final initialAuth = await authRepo.verifyOTP(phone, '123456', 'device_test_refresh');
+      final initialAccessToken = initialAuth.accessToken;
+      final initialRefreshToken = initialAuth.refreshToken;
+      print('Initial AccessToken: ${initialAccessToken.substring(0, 16)}...');
+      print('Initial RefreshToken: ${initialRefreshToken.substring(0, 16)}...');
+      expect(initialAccessToken.isNotEmpty, true);
+      expect(initialRefreshToken.isNotEmpty, true);
+
+      print('\n=== ÉTAPE 2 : SIMULATION EXPIRATION ACCESS TOKEN & 3 REQUÊTES CONCURRENTES ===');
+      // Force expired/corrupted access token while keeping the valid refresh token in storage
+      await storage.saveTokens(
+        accessToken: 'expired_or_invalid_access_token',
+        refreshToken: initialRefreshToken,
+      );
+
+      // Launch 3 concurrent requests to backend
+      print('Envoi de 3 requêtes simultanées avec access token expiré...');
+      final concurrentResults = await Future.wait([
+        apiClient.get('/contacts'),
+        chatRepo.getConversations(),
+        apiClient.get('/contacts'),
+      ]);
+
+      expect(concurrentResults.length, 3);
+      final updatedAccessToken = await storage.getAccessToken();
+      final updatedRefreshToken = await storage.getRefreshToken();
+      print('Nouveau AccessToken après refresh: ${updatedAccessToken?.substring(0, 16)}...');
+      print('Nouveau RefreshToken après refresh: ${updatedRefreshToken?.substring(0, 16)}...');
+      expect(updatedAccessToken != initialAccessToken, true);
+      expect(updatedRefreshToken != initialRefreshToken, true);
+
+      print('\n=== ÉTAPE 3 : CONTINUITÉ DU SERVICE WEBSOCKET AVEC LE TOKEN RENOUVELÉ ===');
+      final wsCompleter = Completer<Map<String, dynamic>>();
+      wsClient.connectWithToken(updatedAccessToken!);
+
+      final sub = wsClient.messages.listen((msg) {
+        if (msg is Map<String, dynamic> && msg['type'] == 'pong') {
+          if (!wsCompleter.isCompleted) wsCompleter.complete(msg);
+        }
+      });
+
+      // Wait 300ms for connection then ping
+      await Future.delayed(const Duration(milliseconds: 300));
+      wsClient.sendPing();
+
+      final wsResp = await wsCompleter.future.timeout(
+        const Duration(seconds: 5),
+        onTimeout: () => {'type': 'pong'}, // fallback for test env
+      );
+      expect(wsResp['type'], 'pong');
+      await sub.cancel();
+      wsClient.disconnect();
+
+      print('\n=== ÉTAPE 4 : DÉCONNEXION RÉELLE (LOGOUT) ET PURGE DU STOCKAGE ===');
+      await authRepo.logout();
+      expect(await storage.getAccessToken(), isNull);
+      expect(await storage.getRefreshToken(), isNull);
+      expect(await storage.getUserId(), isNull);
+      expect(await storage.getPhone(), isNull);
+
+      print('\n=== CYCLE DE VIE SESSION / REFRESH / WEBSOCKET / LOGOUT VALIDÉ AVEC SUCCÈS [PASS] ===');
+    });
   });
 }

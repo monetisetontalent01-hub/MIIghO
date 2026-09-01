@@ -1,6 +1,8 @@
+import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import '../../features/auth/data/auth_repository.dart';
+import '../../features/auth/presentation/bloc/auth_bloc.dart';
 import '../../features/auth/presentation/screens/welcome_screen.dart';
 import '../../features/auth/presentation/screens/phone_input_screen.dart';
 import '../../features/auth/presentation/screens/otp_verification_screen.dart';
@@ -15,20 +17,36 @@ import '../../features/settings/presentation/screens/settings_screen.dart';
 import '../../features/modules/presentation/screens/module_screen.dart';
 import '../../shared/widgets/miigho_navigation_shell.dart';
 
-GoRouter createRouter(AuthRepository authRepository) {
+class GoRouterRefreshStream extends ChangeNotifier {
+  late final StreamSubscription<dynamic> _subscription;
+
+  GoRouterRefreshStream(Stream<dynamic> stream) {
+    notifyListeners();
+    _subscription = stream.asBroadcastStream().listen((_) => notifyListeners());
+  }
+
+  @override
+  void dispose() {
+    _subscription.cancel();
+    super.dispose();
+  }
+}
+
+GoRouter createRouter(AuthRepository authRepository, [AuthBloc? authBloc]) {
   return GoRouter(
     initialLocation: '/welcome',
+    refreshListenable: authBloc != null ? GoRouterRefreshStream(authBloc.stream) : null,
     redirect: (BuildContext context, GoRouterState state) async {
       final token = await authRepository.getAccessToken();
-      final isAuthenticated = token != null;
+      final hasSession = token != null && token.isNotEmpty;
 
       final isAuthRoute = state.matchedLocation.startsWith('/auth') || state.matchedLocation == '/welcome';
 
-      if (!isAuthenticated && !isAuthRoute) {
+      if (!hasSession && !isAuthRoute) {
         return '/welcome';
       }
 
-      if (isAuthenticated && isAuthRoute) {
+      if (hasSession && isAuthRoute) {
         return '/home';
       }
 

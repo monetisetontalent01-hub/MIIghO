@@ -40,6 +40,16 @@ class MiighoApp extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final authRepository = AuthRepository(apiClient, secureStorage);
+    final authBloc = AuthBloc(authRepository: authRepository)..add(AuthCheckRequested());
+
+    // Connect ApiClient callbacks
+    apiClient.onSessionExpired = () {
+      authBloc.add(LogoutRequested());
+    };
+    apiClient.onTokenRefreshed = (newToken) {
+      wsClient.updateToken(newToken);
+    };
+
     final identityRepository = IdentityRepository(
       apiClient: apiClient,
       secureStorage: secureStorage,
@@ -57,7 +67,7 @@ class MiighoApp extends StatelessWidget {
     final payRepository = PayRepository(
       apiClient: apiClient,
     );
-    final router = createRouter(authRepository);
+    final router = createRouter(authRepository, authBloc);
 
     return MultiBlocProvider(
       providers: [
@@ -70,8 +80,8 @@ class MiighoApp extends StatelessWidget {
         BlocProvider(
           create: (_) => IdentityBloc(repository: identityRepository)..add(LoadIdentity()),
         ),
-        BlocProvider(
-          create: (_) => AuthBloc(authRepository: authRepository)..add(AuthCheckRequested()),
+        BlocProvider.value(
+          value: authBloc,
         ),
         BlocProvider(
           create: (_) => ChatBloc(chatRepository: chatRepository)..add(LoadConversations()),

@@ -12,6 +12,7 @@ import (
 // AuthRepository defines operations on auth entities.
 type AuthRepository interface {
 	FindUserByPhone(ctx context.Context, phone string) (*User, error)
+	FindUserByID(ctx context.Context, id uuid.UUID) (*User, error)
 	CreateUser(ctx context.Context, user *User) error
 	StoreOTP(ctx context.Context, otp *OTPCode) error
 	GetOTP(ctx context.Context, phone string) (*OTPCode, error)
@@ -40,6 +41,19 @@ func (r *PostgresAuthRepository) FindUserByPhone(ctx context.Context, phone stri
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
 			return nil, nil // Not found is handled nicely
+		}
+		return nil, err
+	}
+	return &user, nil
+}
+
+func (r *PostgresAuthRepository) FindUserByID(ctx context.Context, id uuid.UUID) (*User, error) {
+	var user User
+	err := r.pool.QueryRow(ctx, "SELECT id, phone_number, created_at, updated_at FROM users WHERE id = $1", id).
+		Scan(&user.ID, &user.PhoneNumber, &user.CreatedAt, &user.UpdatedAt)
+	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return nil, nil
 		}
 		return nil, err
 	}

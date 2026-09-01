@@ -6,6 +6,7 @@ import '../../../../core/theme/colors.dart';
 import '../../../../core/theme/theme_cubit.dart';
 import '../../../../core/l10n/locale_cubit.dart';
 import '../../../../shared/widgets/miigho_avatar.dart';
+import '../../../auth/presentation/bloc/auth_bloc.dart';
 
 class SettingsScreen extends StatelessWidget {
   const SettingsScreen({super.key});
@@ -236,7 +237,7 @@ class SettingsScreen extends StatelessWidget {
             subtitle: 'Se déconnecter de ce compte',
             isDark: isDark,
             onTap: () {
-              context.go('/welcome');
+              context.read<AuthBloc>().add(LogoutRequested());
             },
           ),
           const SizedBox(height: 32),

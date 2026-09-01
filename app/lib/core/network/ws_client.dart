@@ -27,6 +27,10 @@ class WsClient {
     connect();
   }
 
+  void updateToken(String token) {
+    _currentToken = token;
+  }
+
   void connect() {
     _isExplicitlyDisconnected = false;
     _reconnectTimer?.cancel();

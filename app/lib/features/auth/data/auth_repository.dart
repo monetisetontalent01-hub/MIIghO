@@ -54,9 +54,62 @@ class AuthRepository {
   }
   
   Future<String?> getAccessToken() => secureStorage.getAccessToken();
+  Future<String?> getRefreshToken() => secureStorage.getRefreshToken();
+
+  Future<AuthResponse?> refreshToken() async {
+    final currentRefreshToken = await secureStorage.getRefreshToken();
+    if (currentRefreshToken == null || currentRefreshToken.isEmpty) {
+      await logout();
+      return null;
+    }
+
+    try {
+      final response = await apiClient.post(
+        '/auth/token/refresh',
+        data: {'refresh_token': currentRefreshToken},
+      );
+      final raw = response.data;
+      final innerData = (raw is Map<String, dynamic> && raw.containsKey('data'))
+          ? raw['data'] as Map<String, dynamic>
+          : raw as Map<String, dynamic>;
+
+      final authData = AuthResponse.fromJson(innerData);
+      if (authData.accessToken.isNotEmpty && authData.refreshToken.isNotEmpty) {
+        await secureStorage.saveTokens(
+          accessToken: authData.accessToken,
+          refreshToken: authData.refreshToken,
+        );
+        return authData;
+      }
+    } catch (_) {}
+
+    await logout();
+    return null;
+  }
+
+  /// Checks if current session is active or can be refreshed.
+  Future<bool> validateOrRefreshSession() async {
+    final token = await secureStorage.getAccessToken();
+    if (token == null || token.isEmpty) {
+      return false;
+    }
+
+    // Attempt to refresh the session token to verify validity
+    final refreshed = await refreshToken();
+    return refreshed != null;
+  }
 
   Future<void> logout() async {
-    await secureStorage.clearTokens();
+    try {
+      final token = await secureStorage.getAccessToken();
+      if (token != null && token.isNotEmpty) {
+        await apiClient.post('/auth/logout');
+      }
+    } catch (_) {
+      // Best-effort remote revocation: local tokens are always wiped
+    } finally {
+      await secureStorage.clearTokens();
+    }
   }
 }
 
