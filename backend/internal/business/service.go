@@ -35,6 +35,7 @@ type Service struct {
 	ledgerRepo         ledger.Repository
 	settlementProvider SettlementProvider
 	settlementMu       sync.Mutex
+	paymentMu          sync.Mutex
 }
 
 func NewService(repo Repository, ledgerRepo ledger.Repository) *Service {
@@ -697,6 +698,9 @@ func (s *Service) GetPaymentIntent(ctx context.Context, requestUserID, intentID 
 // ConfirmPaymentIntent executes the atomic double-entry ledger movement:
 // Client (Asset) CRÉDIT (-) | Business (Asset) DÉBIT (+)
 func (s *Service) ConfirmPaymentIntent(ctx context.Context, payerUserID, intentID uuid.UUID, req *ConfirmPaymentIntentRequest) (*MerchantPaymentReceipt, error) {
+	s.paymentMu.Lock()
+	defer s.paymentMu.Unlock()
+
 	intent, err := s.repo.GetPaymentIntent(ctx, intentID)
 	if err != nil {
 		return nil, err
