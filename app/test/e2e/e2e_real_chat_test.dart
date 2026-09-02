@@ -1,3 +1,6 @@
+@Tags(['e2e'])
+library e2e_real_chat_test;
+
 import 'dart:async';
 import 'dart:io';
 import 'package:flutter_test/flutter_test.dart';
