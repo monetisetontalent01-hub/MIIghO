@@ -15,12 +15,28 @@ type ValkeyClient struct {
 }
 
 // NewValkeyClient initializes a new Valkey (Redis compatible) client.
+// Priority: VALKEY_URL > REDIS_URL > Valkey Addr/Password/DB.
 func NewValkeyClient(ctx context.Context, cfg *config.Config) (*ValkeyClient, error) {
-	rdb := redis.NewClient(&redis.Options{
-		Addr:     cfg.Valkey.Addr,
-		Password: cfg.Valkey.Password,
-		DB:       cfg.Valkey.DB,
-	})
+	var rdb *redis.Client
+
+	targetURL := cfg.Valkey.URL
+	if targetURL == "" {
+		targetURL = cfg.Valkey.RedisURL
+	}
+
+	if targetURL != "" {
+		opt, err := redis.ParseURL(targetURL)
+		if err != nil {
+			return nil, fmt.Errorf("failed to parse valkey/redis url: %w", err)
+		}
+		rdb = redis.NewClient(opt)
+	} else {
+		rdb = redis.NewClient(&redis.Options{
+			Addr:     cfg.Valkey.Addr,
+			Password: cfg.Valkey.Password,
+			DB:       cfg.Valkey.DB,
+		})
+	}
 
 	if err := rdb.Ping(ctx).Err(); err != nil {
 		return nil, fmt.Errorf("failed to ping valkey: %w", err)

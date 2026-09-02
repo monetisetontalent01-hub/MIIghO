@@ -138,16 +138,16 @@ func main() {
 	e.Use(middleware.RequestLogger(logger))
 	e.Use(echomiddleware.Recover())
 	e.Use(echomiddleware.CORSWithConfig(echomiddleware.CORSConfig{
-		AllowOrigins: []string{"*"},
+		AllowOrigins: cfg.CORS.AllowedOrigins,
 		AllowMethods: []string{http.MethodGet, http.MethodHead, http.MethodPut, http.MethodPatch, http.MethodPost, http.MethodDelete},
 		AllowHeaders: []string{echo.HeaderOrigin, echo.HeaderContentType, echo.HeaderAccept, echo.HeaderAuthorization},
 	}))
 
 	// Security Middlewares
-	authMiddleware := middleware.AuthMiddleware(valkeyClient, pgPool)
+	authMiddleware := middleware.AuthMiddleware(valkeyClient, pgPool, cfg.Server.Mode)
 	rateLimitMiddleware := middleware.RateLimitMiddleware(valkeyClient, 100, time.Minute)
 
-	// Health check
+	// Liveness check: verifies process is alive (instantaneous, 0 dependencies)
 	e.GET("/health", func(c echo.Context) error {
 		return c.JSON(http.StatusOK, map[string]interface{}{
 			"status":    "ok",
@@ -157,8 +157,47 @@ func main() {
 		})
 	})
 
+	// Readiness check: verifies critical dependencies are reachable (ping only, 0 ledger/financial access)
+	e.GET("/ready", func(c echo.Context) error {
+		reqCtx := c.Request().Context()
+		ctx, cancel := context.WithTimeout(reqCtx, 2*time.Second)
+		defer cancel()
+
+		var dbStatus = "ok"
+		if err := pgPool.Ping(ctx); err != nil {
+			dbStatus = "unavailable"
+		}
+
+		var cacheStatus = "ok"
+		if err := valkeyClient.HealthCheck(ctx); err != nil {
+			cacheStatus = "unavailable"
+		}
+
+		if dbStatus != "ok" || cacheStatus != "ok" {
+			return c.JSON(http.StatusServiceUnavailable, map[string]interface{}{
+				"status": "unavailable",
+				"system": "MÏÏghO OS Core",
+				"checks": map[string]string{
+					"database": dbStatus,
+					"cache":    cacheStatus,
+				},
+				"timestamp": time.Now().UTC().Format(time.RFC3339),
+			})
+		}
+
+		return c.JSON(http.StatusOK, map[string]interface{}{
+			"status": "ready",
+			"system": "MÏÏghO OS Core",
+			"checks": map[string]string{
+				"database": "ok",
+				"cache":    "ok",
+			},
+			"timestamp": time.Now().UTC().Format(time.RFC3339),
+		})
+	})
+
 	// WebSocket endpoint with auth
-	e.GET("/ws", chat.HandleWebSocket(hub, chatService), middleware.WsAuthMiddleware(valkeyClient, pgPool))
+	e.GET("/ws", chat.HandleWebSocket(hub, chatService), middleware.WsAuthMiddleware(valkeyClient, pgPool, cfg.Server.Mode))
 
 	// API v1 routes
 	apiV1 := e.Group("/api/v1")

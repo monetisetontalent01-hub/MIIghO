@@ -14,7 +14,7 @@ void main() async {
   // Initialize services
   final secureStorage = SecureStorageService();
   final database = MiighoDatabase();
-  final config = AppConfig.local();
+  final config = AppConfig.fromEnvironment();
   final apiClient = ApiClient(config.baseUrl, secureStorage);
   final wsClient = WsClient(config.wsUrl);
   final connectivityService = ConnectivityService();

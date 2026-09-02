@@ -9,17 +9,21 @@ import (
 	"github.com/miigho/miigho/internal/config"
 )
 
-// NewPostgresPool initializes a new PostgreSQL connection pool using pgxpool.
 func NewPostgresPool(ctx context.Context, cfg *config.Config) (*pgxpool.Pool, error) {
-	connString := fmt.Sprintf(
-		"postgres://%s:%s@%s:%d/%s?sslmode=%s",
-		cfg.Database.User,
-		cfg.Database.Password,
-		cfg.Database.Host,
-		cfg.Database.Port,
-		cfg.Database.DBName,
-		cfg.Database.SSLMode,
-	)
+	var connString string
+	if cfg.Database.URL != "" {
+		connString = cfg.Database.URL
+	} else {
+		connString = fmt.Sprintf(
+			"postgres://%s:%s@%s:%d/%s?sslmode=%s",
+			cfg.Database.User,
+			cfg.Database.Password,
+			cfg.Database.Host,
+			cfg.Database.Port,
+			cfg.Database.DBName,
+			cfg.Database.SSLMode,
+		)
+	}
 
 	poolConfig, err := pgxpool.ParseConfig(connString)
 	if err != nil {
