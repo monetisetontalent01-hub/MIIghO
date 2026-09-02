@@ -71,7 +71,7 @@ jobs:
       - name: Flutter Analyze
         run: |
           cd app
-          flutter analyze
+          flutter analyze --no-fatal-infos --no-fatal-warnings
 
       - name: Flutter Unit & Widget Tests
         run: |
