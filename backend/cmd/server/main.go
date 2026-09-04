@@ -62,6 +62,12 @@ func main() {
 	defer pgPool.Close()
 	logger.Info().Msg("PostgreSQL connected successfully")
 
+	// Ensure critical database tables and schemas are present
+	if err := database.EnsureSchema(ctx, pgPool); err != nil {
+		logger.Fatal().Err(err).Msg("Failed to ensure database schema")
+	}
+	logger.Info().Msg("Database schema verified and up-to-date")
+
 	// Initialize Valkey client
 	valkeyClient, err := cache.NewValkeyClient(ctx, cfg)
 	if err != nil {
