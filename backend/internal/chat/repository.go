@@ -2,6 +2,7 @@ package chat
 
 import (
 	"context"
+	"fmt"
 	"time"
 
 	"github.com/google/uuid"
@@ -368,44 +369,44 @@ func (r *PostgresChatRepository) CreateMessage(ctx context.Context, msg *Message
 	defer tx.Rollback(ctx)
 
 	if msg.ClientMessageID != "" {
-		query := `
-			INSERT INTO messages (id, conversation_id, sender_id, type, content, reply_to, client_message_id, created_at, updated_at)
-			VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
-			ON CONFLICT (conversation_id, client_message_id) WHERE client_message_id IS NOT NULL DO NOTHING
-		`
-		tag, err := tx.Exec(ctx, query, msg.ID, msg.ConversationID, msg.SenderID, string(msg.Type), string(msg.Content), msg.ReplyToID, msg.ClientMessageID, msg.CreatedAt, msg.CreatedAt)
-		if err != nil {
+		// Acquire transaction-level advisory lock on (conversation_id:client_message_id)
+		// This guarantees atomic idempotency across concurrent workers / retries on the partitioned messages table.
+		lockKey := fmt.Sprintf("%s:%s", msg.ConversationID.String(), msg.ClientMessageID)
+		if _, err := tx.Exec(ctx, "SELECT pg_advisory_xact_lock(hashtext($1))", lockKey); err != nil {
 			return err
 		}
-		if tag.RowsAffected() == 0 {
-			// Message already exists due to concurrent or repeated insert with same client_message_id
-			existingQuery := `
-				SELECT id, conversation_id, sender_id, type, COALESCE(content, ''), reply_to, COALESCE(client_message_id, ''), created_at, updated_at, deleted_at,
-				       CASE WHEN EXISTS (SELECT 1 FROM read_receipts rr WHERE rr.message_id = messages.id) THEN 'read' ELSE 'sent' END AS status
-				FROM messages
-				WHERE conversation_id = $1 AND client_message_id = $2
-				LIMIT 1
-			`
-			var contentStr, statusStr string
-			err := tx.QueryRow(ctx, existingQuery, msg.ConversationID, msg.ClientMessageID).Scan(
-				&msg.ID, &msg.ConversationID, &msg.SenderID, &msg.Type, &contentStr, &msg.ReplyToID, &msg.ClientMessageID, &msg.CreatedAt, &msg.UpdatedAt, &msg.DeletedAt, &statusStr,
-			)
-			if err != nil {
-				return err
-			}
+
+		// Check if message already exists
+		existingQuery := `
+			SELECT id, conversation_id, sender_id, type, COALESCE(content, ''), reply_to, COALESCE(client_message_id, ''), created_at, updated_at, deleted_at,
+			       CASE WHEN EXISTS (SELECT 1 FROM read_receipts rr WHERE rr.message_id = messages.id) THEN 'read' ELSE 'sent' END AS status
+			FROM messages
+			WHERE conversation_id = $1 AND client_message_id = $2 AND deleted_at IS NULL
+			LIMIT 1
+		`
+		var contentStr, statusStr string
+		err := tx.QueryRow(ctx, existingQuery, msg.ConversationID, msg.ClientMessageID).Scan(
+			&msg.ID, &msg.ConversationID, &msg.SenderID, &msg.Type, &contentStr, &msg.ReplyToID, &msg.ClientMessageID, &msg.CreatedAt, &msg.UpdatedAt, &msg.DeletedAt, &statusStr,
+		)
+		if err == nil {
+			// Message already exists; return existing message idempotently
 			msg.Content = []byte(contentStr)
 			msg.Status = MessageStatus(statusStr)
 			return tx.Commit(ctx)
 		}
-	} else {
-		query := `
-			INSERT INTO messages (id, conversation_id, sender_id, type, content, reply_to, created_at, updated_at)
-			VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
-		`
-		_, err = tx.Exec(ctx, query, msg.ID, msg.ConversationID, msg.SenderID, string(msg.Type), string(msg.Content), msg.ReplyToID, msg.CreatedAt, msg.CreatedAt)
-		if err != nil {
-			return err
-		}
+	}
+
+	query := `
+		INSERT INTO messages (id, conversation_id, sender_id, type, content, reply_to, client_message_id, created_at, updated_at)
+		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+	`
+	var clientMsgID *string
+	if msg.ClientMessageID != "" {
+		clientMsgID = &msg.ClientMessageID
+	}
+	_, err = tx.Exec(ctx, query, msg.ID, msg.ConversationID, msg.SenderID, string(msg.Type), string(msg.Content), msg.ReplyToID, clientMsgID, msg.CreatedAt, msg.CreatedAt)
+	if err != nil {
+		return err
 	}
 
 	// Update conversation's updated_at

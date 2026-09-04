@@ -70,7 +70,7 @@ func EnsureSchema(ctx context.Context, pool *pgxpool.Pool) error {
 		`CREATE INDEX IF NOT EXISTS idx_contact_requests_recipient_status ON contact_requests(recipient_id, status);`,
 		`CREATE INDEX IF NOT EXISTS idx_contact_requests_sender_status ON contact_requests(sender_id, status);`,
 		`ALTER TABLE messages ADD COLUMN IF NOT EXISTS client_message_id VARCHAR(64);`,
-		`CREATE UNIQUE INDEX IF NOT EXISTS idx_messages_client_message_id
+		`CREATE INDEX IF NOT EXISTS idx_messages_client_message_id
 			ON messages (conversation_id, client_message_id)
 			WHERE client_message_id IS NOT NULL;`,
 	}
