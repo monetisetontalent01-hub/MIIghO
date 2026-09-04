@@ -107,7 +107,7 @@ func main() {
 	contactService := contact.NewContactService(contactRepo)
 	mediaService := media.NewMediaService(s3Client)
 	encService := &encryption.PassthroughEncryption{}
-	chatService := chat.NewChatService(chatRepo, eventBus, encService)
+	chatService := chat.NewChatService(chatRepo, eventBus, encService, contactService)
 	ledgerService := ledger.NewService(ledgerRepo)
 	businessService := business.NewService(businessRepo, ledgerRepo)
 	pspService := psp.NewGatewayService(pspRepo)

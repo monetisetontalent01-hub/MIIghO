@@ -167,7 +167,28 @@ class _CreateGroupDialogState extends State<CreateGroupDialog> {
 
                 List<Contact> contacts = [];
                 if (state is ContactsLoaded) {
-                  contacts = state.miighoContacts;
+                  // Only allow adding mutual (accepted) contacts to groups
+                  contacts = state.allContacts.where((c) => c.relationshipStatus == 'accepted' || c.isMutualContact).toList();
+                  if (contacts.isEmpty) {
+                    // Fallback to miighoContacts if relations not yet tagged as accepted
+                    contacts = state.miighoContacts;
+                  }
+                }
+
+                if (contacts.isEmpty) {
+                  return Center(
+                    child: Padding(
+                      padding: const EdgeInsets.all(24.0),
+                      child: Text(
+                        'Vous devez avoir des contacts mutuels acceptés pour créer un groupe.',
+                        textAlign: TextAlign.center,
+                        style: TextStyle(
+                          fontSize: 13,
+                          color: isDark ? MiighoColors.textMuted : MiighoColors.lightTextMuted,
+                        ),
+                      ),
+                    ),
+                  );
                 }
 
                 return ListView.builder(
@@ -175,6 +196,7 @@ class _CreateGroupDialogState extends State<CreateGroupDialog> {
                   itemBuilder: (context, index) {
                     final c = contacts[index];
                     final isSelected = _selectedContactIds.contains(c.id);
+                    final hasMiighoId = c.miighoId != null && c.miighoId!.isNotEmpty;
 
                     return CheckboxListTile(
                       value: isSelected,
@@ -185,15 +207,21 @@ class _CreateGroupDialogState extends State<CreateGroupDialog> {
                         size: MiighoAvatarSize.sm,
                       ),
                       title: Text(
-                        c.displayName,
+                        c.displayName.isNotEmpty ? c.displayName : 'Utilisateur MÏÏghO',
                         style: TextStyle(
                           fontWeight: FontWeight.w600,
                           color: isDark ? MiighoColors.textPrimary : MiighoColors.lightTextPrimary,
                         ),
                       ),
                       subtitle: Text(
-                        c.phoneNumber,
-                        style: TextStyle(fontSize: 11, color: isDark ? MiighoColors.textSecondary : MiighoColors.lightTextSecondary),
+                        hasMiighoId ? c.miighoId! : c.phoneNumber,
+                        style: TextStyle(
+                          fontSize: 11,
+                          color: hasMiighoId
+                              ? MiighoColors.primary
+                              : (isDark ? MiighoColors.textSecondary : MiighoColors.lightTextSecondary),
+                          fontWeight: hasMiighoId ? FontWeight.w600 : FontWeight.normal,
+                        ),
                       ),
                       onChanged: (selected) {
                         setState(() {

@@ -164,12 +164,14 @@ class ConversationsLoaded extends ChatState {
 class MessagesLoaded extends ChatState {
   final String conversationId;
   final List<MiighoMessageItem> messages;
+  final MiighoConversation? conversation;
   final bool isPeerTyping;
   final String? peerTypingName;
 
   MessagesLoaded({
     required this.conversationId,
     required this.messages,
+    this.conversation,
     this.isPeerTyping = false,
     this.peerTypingName,
   });
@@ -177,12 +179,14 @@ class MessagesLoaded extends ChatState {
   MessagesLoaded copyWith({
     String? conversationId,
     List<MiighoMessageItem>? messages,
+    MiighoConversation? conversation,
     bool? isPeerTyping,
     String? peerTypingName,
   }) {
     return MessagesLoaded(
       conversationId: conversationId ?? this.conversationId,
       messages: messages ?? this.messages,
+      conversation: conversation ?? this.conversation,
       isPeerTyping: isPeerTyping ?? this.isPeerTyping,
       peerTypingName: peerTypingName ?? this.peerTypingName,
     );
@@ -243,7 +247,18 @@ class ChatBloc extends Bloc<ChatEvent, ChatState> {
     emit(ChatLoading());
     try {
       final messages = await chatRepository.getMessages(event.conversationId);
-      emit(MessagesLoaded(conversationId: event.conversationId, messages: messages));
+      MiighoConversation? conv;
+      final existingIdx = _allConversations.indexWhere((c) => c.id == event.conversationId);
+      if (existingIdx != -1) {
+        conv = _allConversations[existingIdx];
+      } else {
+        conv = await chatRepository.getConversation(event.conversationId);
+      }
+      emit(MessagesLoaded(
+        conversationId: event.conversationId,
+        messages: messages,
+        conversation: conv,
+      ));
     } catch (e) {
       emit(ChatError('Impossible de charger les messages: $e'));
     }
@@ -251,6 +266,7 @@ class ChatBloc extends Bloc<ChatEvent, ChatState> {
 
   Future<void> _onSendTextMessage(SendTextMessage event, Emitter<ChatState> emit) async {
     final tempId = 'temp_${DateTime.now().millisecondsSinceEpoch}';
+    final clientMessageId = tempId;
     final optimisticMessage = MiighoMessageItem(
       id: tempId,
       conversationId: event.conversationId,
@@ -260,6 +276,7 @@ class ChatBloc extends Bloc<ChatEvent, ChatState> {
       status: MessageDeliveryStatus.sending,
       timestamp: DateTime.now(),
       replyToId: event.replyToId,
+      clientMessageId: clientMessageId,
     );
 
     final currentState = state;
@@ -278,13 +295,23 @@ class ChatBloc extends Bloc<ChatEvent, ChatState> {
         content: event.content,
         type: MessageBubbleType.text,
         replyToId: event.replyToId,
+        clientMessageId: clientMessageId,
       );
 
       final latestState = state;
       if (latestState is MessagesLoaded && latestState.conversationId == event.conversationId) {
-        final updatedList = latestState.messages.map((m) {
-          return m.id == tempId ? serverConfirmed : m;
-        }).toList();
+        final alreadyHasServerMsg = latestState.messages.any((m) => m.id == serverConfirmed.id);
+        List<MiighoMessageItem> updatedList;
+        if (alreadyHasServerMsg) {
+          // WebSocket already reconciled or delivered server message, remove temporary
+          updatedList = latestState.messages.where((m) => m.id != tempId && m.clientMessageId != clientMessageId).toList();
+        } else {
+          updatedList = latestState.messages.map((m) {
+            return (m.id == tempId || (m.clientMessageId != null && m.clientMessageId == clientMessageId))
+                ? serverConfirmed
+                : m;
+          }).toList();
+        }
         emit(latestState.copyWith(messages: updatedList));
       }
 
@@ -304,7 +331,9 @@ class ChatBloc extends Bloc<ChatEvent, ChatState> {
       final latestState = state;
       if (latestState is MessagesLoaded && latestState.conversationId == event.conversationId) {
         final updatedList = latestState.messages.map((m) {
-          return m.id == tempId ? m.copyWith(status: MessageDeliveryStatus.failed) : m;
+          return (m.id == tempId || (m.clientMessageId != null && m.clientMessageId == clientMessageId))
+              ? m.copyWith(status: MessageDeliveryStatus.failed)
+              : m;
         }).toList();
         emit(latestState.copyWith(messages: updatedList));
       }
@@ -582,9 +611,24 @@ class ChatBloc extends Bloc<ChatEvent, ChatState> {
 
           final currentState = state;
           if (currentState is MessagesLoaded && currentState.conversationId == convId) {
-            // Avoid duplicate if already in list
-            if (!currentState.messages.any((m) => m.id == newMsg.id)) {
-              emit(currentState.copyWith(messages: [newMsg, ...currentState.messages]));
+            final alreadyHasServerMsg = currentState.messages.any((m) => m.id == newMsg.id);
+            if (!alreadyHasServerMsg) {
+              final hasMatchingTemp = newMsg.clientMessageId != null &&
+                  currentState.messages.any((m) =>
+                      m.clientMessageId == newMsg.clientMessageId || m.id == newMsg.clientMessageId);
+
+              if (hasMatchingTemp) {
+                // Reconcile temporary optimistic message with server message
+                final updated = currentState.messages.map((m) {
+                  if (m.clientMessageId == newMsg.clientMessageId || m.id == newMsg.clientMessageId) {
+                    return newMsg;
+                  }
+                  return m;
+                }).toList();
+                emit(currentState.copyWith(messages: updated));
+              } else {
+                emit(currentState.copyWith(messages: [newMsg, ...currentState.messages]));
+              }
             }
           }
 

@@ -24,6 +24,12 @@ func (h *ContactHandler) RegisterRoutes(g *echo.Group, authMiddleware echo.Middl
 	cg.GET("/search", h.searchContacts)
 	cg.POST("/:id/block", h.blockUser)
 	cg.POST("/:id/favorite", h.favoriteUser)
+
+	// Contact request routes
+	cg.POST("/requests", h.sendContactRequest)
+	cg.GET("/requests", h.getContactRequests)
+	cg.POST("/requests/:id/accept", h.acceptContactRequest)
+	cg.POST("/requests/:id/reject", h.rejectContactRequest)
 }
 
 func (h *ContactHandler) searchContacts(c echo.Context) error {
@@ -92,4 +98,89 @@ func (h *ContactHandler) favoriteUser(c echo.Context) error {
 		return err
 	}
 	return common.SuccessResponse(c, map[string]string{"message": "user favorited"})
+}
+
+// ---- Contact Request handlers ----
+
+type sendContactRequestPayload struct {
+	RecipientID string `json:"recipient_id"`
+}
+
+func (h *ContactHandler) sendContactRequest(c echo.Context) error {
+	userIdent, err := identity.GetUserIdentity(c)
+	if err != nil {
+		return common.ErrUnauthorized
+	}
+
+	var payload sendContactRequestPayload
+	if err := c.Bind(&payload); err != nil {
+		return common.ErrBadRequest
+	}
+
+	recipientID, err := uuid.Parse(payload.RecipientID)
+	if err != nil {
+		return &common.AppError{Code: 400, Message: "Invalid recipient_id"}
+	}
+
+	req, err := h.service.SendContactRequest(c.Request().Context(), userIdent.ID, recipientID)
+	if err != nil {
+		return &common.AppError{Code: 400, Message: err.Error()}
+	}
+
+	return common.SuccessResponse(c, req)
+}
+
+func (h *ContactHandler) getContactRequests(c echo.Context) error {
+	userIdent, err := identity.GetUserIdentity(c)
+	if err != nil {
+		return common.ErrUnauthorized
+	}
+
+	direction := c.QueryParam("direction")
+	if direction == "" {
+		direction = "incoming"
+	}
+
+	requests, err := h.service.GetContactRequests(c.Request().Context(), userIdent.ID, direction)
+	if err != nil {
+		return err
+	}
+
+	return common.SuccessResponse(c, requests)
+}
+
+func (h *ContactHandler) acceptContactRequest(c echo.Context) error {
+	userIdent, err := identity.GetUserIdentity(c)
+	if err != nil {
+		return common.ErrUnauthorized
+	}
+
+	requestID, err := uuid.Parse(c.Param("id"))
+	if err != nil {
+		return &common.AppError{Code: 400, Message: "Invalid request ID"}
+	}
+
+	if err := h.service.AcceptContactRequest(c.Request().Context(), requestID, userIdent.ID); err != nil {
+		return &common.AppError{Code: 400, Message: err.Error()}
+	}
+
+	return common.SuccessResponse(c, map[string]string{"message": "contact request accepted"})
+}
+
+func (h *ContactHandler) rejectContactRequest(c echo.Context) error {
+	userIdent, err := identity.GetUserIdentity(c)
+	if err != nil {
+		return common.ErrUnauthorized
+	}
+
+	requestID, err := uuid.Parse(c.Param("id"))
+	if err != nil {
+		return &common.AppError{Code: 400, Message: "Invalid request ID"}
+	}
+
+	if err := h.service.RejectContactRequest(c.Request().Context(), requestID, userIdent.ID); err != nil {
+		return &common.AppError{Code: 400, Message: err.Error()}
+	}
+
+	return common.SuccessResponse(c, map[string]string{"message": "contact request rejected"})
 }

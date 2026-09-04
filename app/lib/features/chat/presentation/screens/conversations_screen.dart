@@ -3,6 +3,9 @@ import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:go_router/go_router.dart';
 import '../../../../core/theme/colors.dart';
 import '../../../../shared/widgets/conversation_tile.dart';
+import '../../../../shared/widgets/miigho_avatar.dart';
+import '../../../contacts/presentation/bloc/contacts_bloc.dart';
+import '../../../contacts/models/contact_model.dart';
 import '../bloc/chat_bloc.dart';
 import '../../models/chat_models.dart';
 import 'new_chat_dialog.dart';
@@ -33,6 +36,7 @@ class _ConversationsScreenState extends State<ConversationsScreen> {
   void initState() {
     super.initState();
     context.read<ChatBloc>().add(LoadConversations());
+    context.read<ContactsBloc>().add(const LoadContacts());
   }
 
   @override
@@ -87,6 +91,109 @@ class _ConversationsScreenState extends State<ConversationsScreen> {
           );
         },
       ),
+    );
+  }
+
+  void _showRequestsSheet(BuildContext context, List<ContactRequest> requests) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: isDark ? MiighoColors.surface1 : MiighoColors.lightSurface1,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
+      builder: (ctx) {
+        return SafeArea(
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Center(
+                  child: Container(
+                    width: 40,
+                    height: 4,
+                    decoration: BoxDecoration(
+                      color: isDark ? MiighoColors.borderStrong : MiighoColors.lightBorderMedium,
+                      borderRadius: BorderRadius.circular(2),
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 16),
+                Text(
+                  'Demandes de contact reçues',
+                  style: TextStyle(
+                    fontSize: 17,
+                    fontWeight: FontWeight.w700,
+                    color: isDark ? MiighoColors.textPrimary : MiighoColors.lightTextPrimary,
+                  ),
+                ),
+                const SizedBox(height: 12),
+                if (requests.isEmpty)
+                  Padding(
+                    padding: const EdgeInsets.all(24.0),
+                    child: Center(
+                      child: Text(
+                        'Aucune demande en attente.',
+                        style: TextStyle(color: isDark ? MiighoColors.textMuted : MiighoColors.lightTextMuted),
+                      ),
+                    ),
+                  )
+                else
+                  ...requests.map((r) {
+                    return ListTile(
+                      contentPadding: EdgeInsets.zero,
+                      leading: MiighoAvatar(
+                        name: r.senderName,
+                        avatarUrl: r.senderAvatar,
+                        size: MiighoAvatarSize.sm,
+                      ),
+                      title: Text(
+                        r.senderName,
+                        style: TextStyle(
+                          fontWeight: FontWeight.w600,
+                          color: isDark ? MiighoColors.textPrimary : MiighoColors.lightTextPrimary,
+                        ),
+                      ),
+                      subtitle: const Text(
+                        'Souhaite discuter avec vous',
+                        style: TextStyle(fontSize: 12),
+                      ),
+                      trailing: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          IconButton(
+                            icon: const Icon(Icons.close_rounded, color: Colors.redAccent, size: 20),
+                            tooltip: 'Refuser',
+                            onPressed: () {
+                              context.read<ContactsBloc>().add(RejectContactRequestEvent(r.id));
+                              Navigator.of(ctx).pop();
+                            },
+                          ),
+                          const SizedBox(width: 4),
+                          ElevatedButton(
+                            style: ElevatedButton.styleFrom(
+                              backgroundColor: MiighoColors.success,
+                              foregroundColor: Colors.white,
+                              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                            ),
+                            onPressed: () {
+                              context.read<ContactsBloc>().add(AcceptContactRequestEvent(r.id));
+                              Navigator.of(ctx).pop();
+                              context.read<ChatBloc>().add(CreateConversationEvent(recipientId: r.senderId));
+                            },
+                            child: const Text('Accepter', style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold)),
+                          ),
+                        ],
+                      ),
+                    );
+                  }),
+              ],
+            ),
+          ),
+        );
+      },
     );
   }
 
@@ -161,6 +268,68 @@ class _ConversationsScreenState extends State<ConversationsScreen> {
                 contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
               ),
             ),
+          ),
+
+          // Bannière Demandes de Contact reçues
+          BlocBuilder<ContactsBloc, ContactsState>(
+            builder: (context, contactState) {
+              if (contactState is ContactsLoaded && contactState.pendingRequestsCount > 0) {
+                final count = contactState.pendingRequestsCount;
+                return Container(
+                  margin: const EdgeInsets.fromLTRB(14, 0, 14, 8),
+                  padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+                  decoration: BoxDecoration(
+                    color: MiighoColors.primary.withValues(alpha: 0.1),
+                    borderRadius: BorderRadius.circular(12),
+                    border: Border.all(color: MiighoColors.primary.withValues(alpha: 0.3)),
+                  ),
+                  child: Row(
+                    children: [
+                      Container(
+                        padding: const EdgeInsets.all(6),
+                        decoration: const BoxDecoration(
+                          color: MiighoColors.primary,
+                          shape: BoxShape.circle,
+                        ),
+                        child: const Icon(Icons.person_add_rounded, color: Colors.white, size: 16),
+                      ),
+                      const SizedBox(width: 12),
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              '$count demande${count > 1 ? 's' : ''} de contact en attente',
+                              style: TextStyle(
+                                fontWeight: FontWeight.w700,
+                                fontSize: 13,
+                                color: isDark ? MiighoColors.textPrimary : MiighoColors.lightTextPrimary,
+                              ),
+                            ),
+                            Text(
+                              'Acceptez pour démarrer la discussion',
+                              style: TextStyle(
+                                fontSize: 11,
+                                color: isDark ? MiighoColors.textSecondary : MiighoColors.lightTextSecondary,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                      TextButton(
+                        onPressed: () => _showRequestsSheet(context, contactState.incomingRequests),
+                        style: TextButton.styleFrom(
+                          foregroundColor: MiighoColors.primary,
+                          visualDensity: VisualDensity.compact,
+                        ),
+                        child: const Text('Voir', style: TextStyle(fontWeight: FontWeight.bold)),
+                      ),
+                    ],
+                  ),
+                );
+              }
+              return const SizedBox.shrink();
+            },
           ),
 
           // Filtres rapides (Chips)

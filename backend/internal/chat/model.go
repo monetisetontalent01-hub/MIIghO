@@ -61,6 +61,7 @@ type Message struct {
 	ReplyToID          *uuid.UUID                     `json:"reply_to_id"`
 	Type               MessageType                    `json:"type"`
 	Content            []byte                         `json:"content"` // Encrypted content or UTF-8 text
+	ClientMessageID    string                         `json:"client_message_id,omitempty"`
 	Metadata           map[string]interface{}         `json:"metadata,omitempty"`
 	EncryptionMetadata *encryption.EncryptionMetadata `json:"encryption_metadata,omitempty"`
 	Status             MessageStatus                  `json:"status"`
@@ -96,10 +97,11 @@ type CreateConversationRequest struct {
 }
 
 type SendMessageRequest struct {
-	Content   string                 `json:"content"`
-	Type      string                 `json:"type"`
-	ReplyToID *string                `json:"reply_to_id,omitempty"`
-	Metadata  map[string]interface{} `json:"metadata,omitempty"`
+	Content         string                 `json:"content"`
+	Type            string                 `json:"type"`
+	ReplyToID       *string                `json:"reply_to_id,omitempty"`
+	ClientMessageID string                 `json:"client_message_id,omitempty"`
+	Metadata        map[string]interface{} `json:"metadata,omitempty"`
 }
 
 type UpdateMessageRequest struct {

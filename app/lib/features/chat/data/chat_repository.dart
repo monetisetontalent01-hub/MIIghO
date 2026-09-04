@@ -67,6 +67,7 @@ class ChatRepository {
     required String content,
     MessageBubbleType type = MessageBubbleType.text,
     String? replyToId,
+    String? clientMessageId,
     String? mediaPath,
     String? mediaUrl,
     Duration? mediaDuration,
@@ -76,7 +77,9 @@ class ChatRepository {
       'content': content,
       'type': type.name,
       if (replyToId != null && replyToId.isNotEmpty) 'reply_to_id': replyToId,
+      if (clientMessageId != null && clientMessageId.isNotEmpty) 'client_message_id': clientMessageId,
       'metadata': {
+        if (clientMessageId != null && clientMessageId.isNotEmpty) 'client_message_id': clientMessageId,
         if (mediaUrl != null) 'media_url': mediaUrl,
         if (mediaDuration != null) 'duration_seconds': mediaDuration.inSeconds,
         if (metadata != null) ...metadata,

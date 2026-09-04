@@ -188,6 +188,13 @@ func (h *ChatHandler) sendMessage(c echo.Context) error {
 		}
 	}
 
+	if req.Metadata == nil {
+		req.Metadata = make(map[string]interface{})
+	}
+	if req.ClientMessageID != "" {
+		req.Metadata["client_message_id"] = req.ClientMessageID
+	}
+
 	msg, err := h.service.SendMessage(c.Request().Context(), convID, userIdent.ID, []byte(req.Content), msgType, replyToUUID, req.Metadata)
 	if err != nil {
 		if errors.Is(err, common.ErrForbidden) {

@@ -8,22 +8,25 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/miigho/miigho/internal/common"
+	"github.com/miigho/miigho/internal/contact"
 	"github.com/miigho/miigho/internal/platform/encryption"
 	"github.com/miigho/miigho/internal/platform/events"
 )
 
 type ChatService struct {
-	repo       ChatRepository
-	eventBus   events.EventBus
-	encryption encryption.EncryptionService
-	hub        *Hub
+	repo           ChatRepository
+	eventBus       events.EventBus
+	encryption     encryption.EncryptionService
+	hub            *Hub
+	contactService *contact.ContactService
 }
 
-func NewChatService(repo ChatRepository, eb events.EventBus, enc encryption.EncryptionService) *ChatService {
+func NewChatService(repo ChatRepository, eb events.EventBus, enc encryption.EncryptionService, cs *contact.ContactService) *ChatService {
 	return &ChatService{
-		repo:       repo,
-		eventBus:   eb,
-		encryption: enc,
+		repo:           repo,
+		eventBus:       eb,
+		encryption:     enc,
+		contactService: cs,
 	}
 }
 
@@ -47,6 +50,25 @@ func (s *ChatService) GetConversation(ctx context.Context, convID, userID uuid.U
 }
 
 func (s *ChatService) CreateDirectConversation(ctx context.Context, userA, userB uuid.UUID) (*Conversation, error) {
+	// Authorization: verify users are mutual contacts
+	if s.contactService != nil {
+		areContacts, err := s.contactService.AreContacts(ctx, userA, userB)
+		if err != nil {
+			return nil, err
+		}
+		if !areContacts {
+			// Allow if a conversation already exists (backward compatibility)
+			existing, existErr := s.repo.FindExistingDirectConversation(ctx, userA, userB)
+			if existErr != nil || existing == nil {
+				return nil, &common.AppError{
+					Code:    403,
+					Message: "Contact request must be accepted before creating a conversation",
+				}
+			}
+			return existing, nil
+		}
+	}
+
 	conv, err := s.repo.CreateDirectConversation(ctx, userA, userB)
 	if err != nil {
 		return nil, err
@@ -60,6 +82,25 @@ func (s *ChatService) CreateDirectConversation(ctx context.Context, userA, userB
 }
 
 func (s *ChatService) CreateGroupConversation(ctx context.Context, creatorID uuid.UUID, name string, memberIDs []uuid.UUID) (*Conversation, error) {
+	// Authorization: verify each member is a contact of the creator
+	if s.contactService != nil {
+		for _, memberID := range memberIDs {
+			if memberID == creatorID {
+				continue
+			}
+			areContacts, err := s.contactService.AreContacts(ctx, creatorID, memberID)
+			if err != nil {
+				return nil, err
+			}
+			if !areContacts {
+				return nil, &common.AppError{
+					Code:    403,
+					Message: "All group members must be accepted contacts",
+				}
+			}
+		}
+	}
+
 	conv, err := s.repo.CreateGroupConversation(ctx, creatorID, name, memberIDs)
 	if err != nil {
 		return nil, err
@@ -86,6 +127,23 @@ func (s *ChatService) SendMessage(ctx context.Context, convID, senderID uuid.UUI
 		return nil, common.ErrForbidden
 	}
 
+	// Extract client_message_id for idempotency
+	var clientMessageID string
+	if metadata != nil {
+		if cmid, ok := metadata["client_message_id"].(string); ok && cmid != "" {
+			clientMessageID = cmid
+		}
+	}
+
+	// Idempotency check: if client_message_id is provided, check for existing message
+	if clientMessageID != "" {
+		existing, err := s.repo.FindMessageByClientID(ctx, convID, clientMessageID)
+		if err == nil && existing != nil {
+			// Already created — return the existing message (idempotent)
+			return existing, nil
+		}
+	}
+
 	// Encrypt
 	ciphertext, meta, err := s.encryption.Encrypt(content, uuid.Nil)
 	if err != nil {
@@ -101,6 +159,7 @@ func (s *ChatService) SendMessage(ctx context.Context, convID, senderID uuid.UUI
 		Type:               msgType,
 		Content:            ciphertext,
 		Metadata:           metadata,
+		ClientMessageID:    clientMessageID,
 		EncryptionMetadata: meta,
 		Status:             StatusSent,
 		CreatedAt:          now,

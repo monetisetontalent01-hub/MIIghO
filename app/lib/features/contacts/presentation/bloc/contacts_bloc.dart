@@ -64,6 +64,41 @@ class UnblockUser extends ContactsEvent {
   List<Object?> get props => [contactId];
 }
 
+/// Send a contact authorization request
+class SendContactRequestEvent extends ContactsEvent {
+  final String recipientId;
+
+  const SendContactRequestEvent(this.recipientId);
+
+  @override
+  List<Object?> get props => [recipientId];
+}
+
+/// Load pending incoming and outgoing contact requests
+class LoadContactRequestsEvent extends ContactsEvent {
+  const LoadContactRequestsEvent();
+}
+
+/// Accept an incoming contact request
+class AcceptContactRequestEvent extends ContactsEvent {
+  final String requestId;
+
+  const AcceptContactRequestEvent(this.requestId);
+
+  @override
+  List<Object?> get props => [requestId];
+}
+
+/// Reject an incoming contact request
+class RejectContactRequestEvent extends ContactsEvent {
+  final String requestId;
+
+  const RejectContactRequestEvent(this.requestId);
+
+  @override
+  List<Object?> get props => [requestId];
+}
+
 // ==========================================
 // STATES
 // ==========================================
@@ -85,6 +120,8 @@ class ContactsLoaded extends ContactsState {
   final List<Contact> miighoContacts;
   final List<Contact> nonMiighoContacts;
   final List<Contact> searchResults;
+  final List<ContactRequest> incomingRequests;
+  final List<ContactRequest> outgoingRequests;
   final String searchQuery;
   final bool isSyncing;
 
@@ -94,11 +131,14 @@ class ContactsLoaded extends ContactsState {
     required this.miighoContacts,
     required this.nonMiighoContacts,
     required this.searchResults,
+    this.incomingRequests = const [],
+    this.outgoingRequests = const [],
     this.searchQuery = '',
     this.isSyncing = false,
   });
 
   bool get isSearching => searchQuery.trim().isNotEmpty;
+  int get pendingRequestsCount => incomingRequests.where((r) => r.isPending).length;
 
   ContactsLoaded copyWith({
     List<Contact>? allContacts,
@@ -106,6 +146,8 @@ class ContactsLoaded extends ContactsState {
     List<Contact>? miighoContacts,
     List<Contact>? nonMiighoContacts,
     List<Contact>? searchResults,
+    List<ContactRequest>? incomingRequests,
+    List<ContactRequest>? outgoingRequests,
     String? searchQuery,
     bool? isSyncing,
   }) {
@@ -115,6 +157,8 @@ class ContactsLoaded extends ContactsState {
       miighoContacts: miighoContacts ?? this.miighoContacts,
       nonMiighoContacts: nonMiighoContacts ?? this.nonMiighoContacts,
       searchResults: searchResults ?? this.searchResults,
+      incomingRequests: incomingRequests ?? this.incomingRequests,
+      outgoingRequests: outgoingRequests ?? this.outgoingRequests,
       searchQuery: searchQuery ?? this.searchQuery,
       isSyncing: isSyncing ?? this.isSyncing,
     );
@@ -127,6 +171,8 @@ class ContactsLoaded extends ContactsState {
         miighoContacts,
         nonMiighoContacts,
         searchResults,
+        incomingRequests,
+        outgoingRequests,
         searchQuery,
         isSyncing,
       ];
@@ -155,13 +201,25 @@ class ContactsBloc extends Bloc<ContactsEvent, ContactsState> {
     on<ToggleFavorite>(_onToggleFavorite);
     on<BlockUser>(_onBlockUser);
     on<UnblockUser>(_onUnblockUser);
+    on<SendContactRequestEvent>(_onSendContactRequest);
+    on<LoadContactRequestsEvent>(_onLoadContactRequests);
+    on<AcceptContactRequestEvent>(_onAcceptContactRequest);
+    on<RejectContactRequestEvent>(_onRejectContactRequest);
   }
 
   Future<void> _onLoadContacts(LoadContacts event, Emitter<ContactsState> emit) async {
     emit(ContactsLoading());
     try {
       final contacts = await repository.fetchLocalContacts();
-      _emitCategorizedContacts(emit, contacts, searchQuery: '');
+      final incoming = await repository.getIncomingRequests();
+      final outgoing = await repository.getOutgoingRequests();
+      _emitCategorizedContacts(
+        emit,
+        contacts,
+        searchQuery: '',
+        incomingRequests: incoming,
+        outgoingRequests: outgoing,
+      );
     } catch (e) {
       emit(ContactsError('Impossible de charger les contacts : ${e.toString()}'));
     }
@@ -175,7 +233,15 @@ class ContactsBloc extends Bloc<ContactsEvent, ContactsState> {
       try {
         final phoneNumbers = currentState.allContacts.map((c) => c.phoneNumber).toList();
         final syncedContacts = await repository.syncContacts(phoneNumbers);
-        _emitCategorizedContacts(emit, syncedContacts, searchQuery: currentState.searchQuery);
+        final incoming = await repository.getIncomingRequests();
+        final outgoing = await repository.getOutgoingRequests();
+        _emitCategorizedContacts(
+          emit,
+          syncedContacts,
+          searchQuery: currentState.searchQuery,
+          incomingRequests: incoming,
+          outgoingRequests: outgoing,
+        );
       } catch (e) {
         emit(currentState.copyWith(isSyncing: false));
       }
@@ -197,7 +263,18 @@ class ContactsBloc extends Bloc<ContactsEvent, ContactsState> {
 
     try {
       final results = await repository.searchContacts(query);
-      _emitCategorizedContacts(emit, results, searchQuery: event.query);
+      if (state is ContactsLoaded) {
+        final currentState = state as ContactsLoaded;
+        _emitCategorizedContacts(
+          emit,
+          results,
+          searchQuery: event.query,
+          incomingRequests: currentState.incomingRequests,
+          outgoingRequests: currentState.outgoingRequests,
+        );
+      } else {
+        _emitCategorizedContacts(emit, results, searchQuery: event.query);
+      }
     } catch (_) {
       if (state is ContactsLoaded) {
         final currentState = state as ContactsLoaded;
@@ -221,7 +298,13 @@ class ContactsBloc extends Bloc<ContactsEvent, ContactsState> {
       final currentState = state as ContactsLoaded;
       await repository.toggleFavorite(event.contactId);
       final updatedList = repository.cachedContacts;
-      _emitCategorizedContacts(emit, updatedList, searchQuery: currentState.searchQuery);
+      _emitCategorizedContacts(
+        emit,
+        updatedList,
+        searchQuery: currentState.searchQuery,
+        incomingRequests: currentState.incomingRequests,
+        outgoingRequests: currentState.outgoingRequests,
+      );
     }
   }
 
@@ -230,7 +313,13 @@ class ContactsBloc extends Bloc<ContactsEvent, ContactsState> {
       final currentState = state as ContactsLoaded;
       await repository.blockUser(event.contactId, block: true);
       final updatedList = repository.cachedContacts;
-      _emitCategorizedContacts(emit, updatedList, searchQuery: currentState.searchQuery);
+      _emitCategorizedContacts(
+        emit,
+        updatedList,
+        searchQuery: currentState.searchQuery,
+        incomingRequests: currentState.incomingRequests,
+        outgoingRequests: currentState.outgoingRequests,
+      );
     }
   }
 
@@ -239,14 +328,70 @@ class ContactsBloc extends Bloc<ContactsEvent, ContactsState> {
       final currentState = state as ContactsLoaded;
       await repository.blockUser(event.contactId, block: false);
       final updatedList = repository.cachedContacts;
-      _emitCategorizedContacts(emit, updatedList, searchQuery: currentState.searchQuery);
+      _emitCategorizedContacts(
+        emit,
+        updatedList,
+        searchQuery: currentState.searchQuery,
+        incomingRequests: currentState.incomingRequests,
+        outgoingRequests: currentState.outgoingRequests,
+      );
     }
+  }
+
+  Future<void> _onSendContactRequest(SendContactRequestEvent event, Emitter<ContactsState> emit) async {
+    try {
+      await repository.sendContactRequest(event.recipientId);
+      // Reload requests
+      final incoming = await repository.getIncomingRequests();
+      final outgoing = await repository.getOutgoingRequests();
+      if (state is ContactsLoaded) {
+        final currentState = state as ContactsLoaded;
+        // Update the target contact's relationshipStatus to pending_sent in searchResults
+        final updatedResults = currentState.searchResults.map((c) {
+          if (c.userId == event.recipientId || c.id == event.recipientId) {
+            return c.copyWith(relationshipStatus: 'pending_sent');
+          }
+          return c;
+        }).toList();
+        emit(currentState.copyWith(
+          searchResults: updatedResults,
+          incomingRequests: incoming,
+          outgoingRequests: outgoing,
+        ));
+      }
+    } catch (_) {
+      // Keep state
+    }
+  }
+
+  Future<void> _onLoadContactRequests(LoadContactRequestsEvent event, Emitter<ContactsState> emit) async {
+    if (state is ContactsLoaded) {
+      final currentState = state as ContactsLoaded;
+      final incoming = await repository.getIncomingRequests();
+      final outgoing = await repository.getOutgoingRequests();
+      emit(currentState.copyWith(
+        incomingRequests: incoming,
+        outgoingRequests: outgoing,
+      ));
+    }
+  }
+
+  Future<void> _onAcceptContactRequest(AcceptContactRequestEvent event, Emitter<ContactsState> emit) async {
+    await repository.acceptContactRequest(event.requestId);
+    add(const LoadContacts());
+  }
+
+  Future<void> _onRejectContactRequest(RejectContactRequestEvent event, Emitter<ContactsState> emit) async {
+    await repository.rejectContactRequest(event.requestId);
+    add(const LoadContacts());
   }
 
   void _emitCategorizedContacts(
     Emitter<ContactsState> emit,
     List<Contact> contacts, {
     required String searchQuery,
+    List<ContactRequest> incomingRequests = const [],
+    List<ContactRequest> outgoingRequests = const [],
   }) {
     // Sort alphabetically by displayName
     final sorted = List<Contact>.from(contacts)
@@ -275,6 +420,8 @@ class ContactsBloc extends Bloc<ContactsEvent, ContactsState> {
       miighoContacts: miighoContacts,
       nonMiighoContacts: nonMiighoContacts,
       searchResults: searchResults,
+      incomingRequests: incomingRequests,
+      outgoingRequests: outgoingRequests,
       searchQuery: searchQuery,
       isSyncing: false,
     ));

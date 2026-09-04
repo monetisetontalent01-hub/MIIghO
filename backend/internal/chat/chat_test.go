@@ -78,6 +78,29 @@ func (r *MemoryChatRepository) GetConversation(ctx context.Context, id uuid.UUID
 	return conv, nil
 }
 
+func (r *MemoryChatRepository) FindExistingDirectConversation(ctx context.Context, userA, userB uuid.UUID) (*Conversation, error) {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+
+	for convID, members := range r.members {
+		if r.conversations[convID].Type == TypeDirect && len(members) == 2 {
+			hasA, hasB := false, false
+			for _, m := range members {
+				if m == userA {
+					hasA = true
+				}
+				if m == userB {
+					hasB = true
+				}
+			}
+			if hasA && hasB {
+				return r.conversations[convID], nil
+			}
+		}
+	}
+	return nil, fmt.Errorf("conversation not found")
+}
+
 func (r *MemoryChatRepository) CreateDirectConversation(ctx context.Context, userA, userB uuid.UUID) (*Conversation, error) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
@@ -130,6 +153,19 @@ func (r *MemoryChatRepository) GetMessages(ctx context.Context, conversationID u
 	return result, "", nil
 }
 
+func (r *MemoryChatRepository) FindMessageByClientID(ctx context.Context, convID uuid.UUID, clientMessageID string) (*Message, error) {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+
+	msgs := r.messages[convID]
+	for _, m := range msgs {
+		if m.ClientMessageID == clientMessageID && m.DeletedAt == nil {
+			return m, nil
+		}
+	}
+	return nil, fmt.Errorf("message not found")
+}
+
 func (r *MemoryChatRepository) CreateMessage(ctx context.Context, msg *Message) error {
 	r.mu.Lock()
 	defer r.mu.Unlock()
@@ -137,6 +173,16 @@ func (r *MemoryChatRepository) CreateMessage(ctx context.Context, msg *Message) 
 	// Verify conversation exists
 	if _, ok := r.conversations[msg.ConversationID]; !ok {
 		return fmt.Errorf("conversation not found: %s", msg.ConversationID)
+	}
+
+	// Check idempotency if clientMessageID is set
+	if msg.ClientMessageID != "" {
+		for _, m := range r.messages[msg.ConversationID] {
+			if m.ClientMessageID == msg.ClientMessageID && m.DeletedAt == nil {
+				*msg = *m
+				return nil
+			}
+		}
 	}
 
 	r.messages[msg.ConversationID] = append(r.messages[msg.ConversationID], msg)
@@ -340,7 +386,7 @@ func setupChatTestEnv(t *testing.T) *chatTestEnv {
 	repo := NewMemoryChatRepository()
 	bus := NewMemoryEventBus()
 	enc := &encryption.PassthroughEncryption{}
-	service := NewChatService(repo, bus, enc)
+	service := NewChatService(repo, bus, enc, nil)
 
 	return &chatTestEnv{
 		repo:    repo,

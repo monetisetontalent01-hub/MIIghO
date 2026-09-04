@@ -14,10 +14,12 @@ type ChatRepository interface {
 	GetConversation(ctx context.Context, id uuid.UUID) (*Conversation, error)
 	IsMember(ctx context.Context, conversationID, userID uuid.UUID) (bool, error)
 	GetConversationMembers(ctx context.Context, conversationID uuid.UUID) ([]uuid.UUID, error)
+	FindExistingDirectConversation(ctx context.Context, userA, userB uuid.UUID) (*Conversation, error)
 	CreateDirectConversation(ctx context.Context, userA, userB uuid.UUID) (*Conversation, error)
 	CreateGroupConversation(ctx context.Context, creatorID uuid.UUID, name string, memberIDs []uuid.UUID) (*Conversation, error)
 	GetMessages(ctx context.Context, conversationID uuid.UUID, cursor string, limit int) ([]*Message, string, error)
 	GetMessage(ctx context.Context, messageID uuid.UUID) (*Message, error)
+	FindMessageByClientID(ctx context.Context, convID uuid.UUID, clientMessageID string) (*Message, error)
 	CreateMessage(ctx context.Context, msg *Message) error
 	UpdateMessage(ctx context.Context, msg *Message) error
 	DeleteMessage(ctx context.Context, id uuid.UUID) error
@@ -67,9 +69,27 @@ func (r *PostgresChatRepository) ListConversations(ctx context.Context, userID u
 	}
 
 	query := `
-		SELECT c.id, c.type, c.name, c.avatar_url, c.created_at, c.updated_at
+		SELECT 
+			c.id, 
+			c.type, 
+			CASE 
+				WHEN c.type = 'direct' THEN COALESCE(
+					NULLIF(u_other.display_name, ''),
+					NULLIF(TRIM(CONCAT(u_other.first_name, ' ', u_other.last_name)), ''),
+					'Utilisateur MÏÏghO'
+				)
+				ELSE COALESCE(c.name, 'Groupe')
+			END AS conv_name,
+			CASE 
+				WHEN c.type = 'direct' THEN COALESCE(u_other.avatar_url, c.avatar_url, '')
+				ELSE COALESCE(c.avatar_url, '')
+			END AS conv_avatar,
+			c.created_at, 
+			c.updated_at
 		FROM conversations c
 		INNER JOIN conversation_members cm ON cm.conversation_id = c.id
+		LEFT JOIN conversation_members cm_other ON cm_other.conversation_id = c.id AND cm_other.user_id != $1 AND c.type = 'direct'
+		LEFT JOIN users u_other ON u_other.id = cm_other.user_id
 		WHERE cm.user_id = $1
 		ORDER BY c.updated_at DESC
 		LIMIT $2
@@ -90,7 +110,7 @@ func (r *PostgresChatRepository) ListConversations(ctx context.Context, userID u
 		// Fetch last message for each conversation
 		var lastMsg *Message
 		lastMsgQuery := `
-			SELECT id, conversation_id, sender_id, type, COALESCE(content, ''), reply_to, created_at, updated_at, deleted_at
+			SELECT id, conversation_id, sender_id, type, COALESCE(content, ''), reply_to, COALESCE(client_message_id, ''), created_at, updated_at, deleted_at
 			FROM messages
 			WHERE conversation_id = $1 AND deleted_at IS NULL
 			ORDER BY created_at DESC
@@ -99,7 +119,7 @@ func (r *PostgresChatRepository) ListConversations(ctx context.Context, userID u
 		var m Message
 		var contentStr string
 		err := r.pool.QueryRow(ctx, lastMsgQuery, conv.ID).Scan(
-			&m.ID, &m.ConversationID, &m.SenderID, &m.Type, &contentStr, &m.ReplyToID, &m.CreatedAt, &m.UpdatedAt, &m.DeletedAt,
+			&m.ID, &m.ConversationID, &m.SenderID, &m.Type, &contentStr, &m.ReplyToID, &m.ClientMessageID, &m.CreatedAt, &m.UpdatedAt, &m.DeletedAt,
 		)
 		if err == nil {
 			m.Content = []byte(contentStr)
@@ -143,8 +163,7 @@ func (r *PostgresChatRepository) GetConversation(ctx context.Context, id uuid.UU
 	return &conv, nil
 }
 
-func (r *PostgresChatRepository) CreateDirectConversation(ctx context.Context, userA, userB uuid.UUID) (*Conversation, error) {
-	// Check for existing direct conversation between these users
+func (r *PostgresChatRepository) FindExistingDirectConversation(ctx context.Context, userA, userB uuid.UUID) (*Conversation, error) {
 	existingQuery := `
 		SELECT c.id, c.type, c.name, c.avatar_url, c.created_at, c.updated_at
 		FROM conversations c
@@ -155,8 +174,17 @@ func (r *PostgresChatRepository) CreateDirectConversation(ctx context.Context, u
 	`
 	var conv Conversation
 	err := r.pool.QueryRow(ctx, existingQuery, userA, userB).Scan(&conv.ID, &conv.Type, &conv.Name, &conv.AvatarURL, &conv.CreatedAt, &conv.UpdatedAt)
-	if err == nil {
-		return &conv, nil
+	if err != nil {
+		return nil, err
+	}
+	return &conv, nil
+}
+
+func (r *PostgresChatRepository) CreateDirectConversation(ctx context.Context, userA, userB uuid.UUID) (*Conversation, error) {
+	// Check for existing direct conversation between these users
+	existing, err := r.FindExistingDirectConversation(ctx, userA, userB)
+	if err == nil && existing != nil {
+		return existing, nil
 	}
 
 	tx, err := r.pool.Begin(ctx)
@@ -246,7 +274,7 @@ func (r *PostgresChatRepository) GetMessages(ctx context.Context, conversationID
 	}
 
 	query := `
-		SELECT m.id, m.conversation_id, m.sender_id, m.type, COALESCE(m.content, ''), m.reply_to, m.created_at, m.updated_at, m.deleted_at,
+		SELECT m.id, m.conversation_id, m.sender_id, m.type, COALESCE(m.content, ''), m.reply_to, COALESCE(m.client_message_id, ''), m.created_at, m.updated_at, m.deleted_at,
 		       CASE WHEN EXISTS (SELECT 1 FROM read_receipts rr WHERE rr.message_id = m.id) THEN 'read' ELSE 'sent' END AS status
 		FROM messages m
 		WHERE m.conversation_id = $1 AND m.deleted_at IS NULL
@@ -264,7 +292,7 @@ func (r *PostgresChatRepository) GetMessages(ctx context.Context, conversationID
 		var m Message
 		var contentStr string
 		var statusStr string
-		if err := rows.Scan(&m.ID, &m.ConversationID, &m.SenderID, &m.Type, &contentStr, &m.ReplyToID, &m.CreatedAt, &m.UpdatedAt, &m.DeletedAt, &statusStr); err != nil {
+		if err := rows.Scan(&m.ID, &m.ConversationID, &m.SenderID, &m.Type, &contentStr, &m.ReplyToID, &m.ClientMessageID, &m.CreatedAt, &m.UpdatedAt, &m.DeletedAt, &statusStr); err != nil {
 			return nil, "", err
 		}
 		m.Content = []byte(contentStr)
@@ -291,7 +319,7 @@ func (r *PostgresChatRepository) GetMessages(ctx context.Context, conversationID
 
 func (r *PostgresChatRepository) GetMessage(ctx context.Context, messageID uuid.UUID) (*Message, error) {
 	query := `
-		SELECT m.id, m.conversation_id, m.sender_id, m.type, COALESCE(m.content, ''), m.reply_to, m.created_at, m.updated_at, m.deleted_at,
+		SELECT m.id, m.conversation_id, m.sender_id, m.type, COALESCE(m.content, ''), m.reply_to, COALESCE(m.client_message_id, ''), m.created_at, m.updated_at, m.deleted_at,
 		       CASE WHEN EXISTS (SELECT 1 FROM read_receipts rr WHERE rr.message_id = m.id) THEN 'read' ELSE 'sent' END AS status
 		FROM messages m
 		WHERE m.id = $1
@@ -300,7 +328,29 @@ func (r *PostgresChatRepository) GetMessage(ctx context.Context, messageID uuid.
 	var contentStr string
 	var statusStr string
 	err := r.pool.QueryRow(ctx, query, messageID).Scan(
-		&m.ID, &m.ConversationID, &m.SenderID, &m.Type, &contentStr, &m.ReplyToID, &m.CreatedAt, &m.UpdatedAt, &m.DeletedAt, &statusStr,
+		&m.ID, &m.ConversationID, &m.SenderID, &m.Type, &contentStr, &m.ReplyToID, &m.ClientMessageID, &m.CreatedAt, &m.UpdatedAt, &m.DeletedAt, &statusStr,
+	)
+	if err != nil {
+		return nil, err
+	}
+	m.Content = []byte(contentStr)
+	m.Status = MessageStatus(statusStr)
+	return &m, nil
+}
+
+func (r *PostgresChatRepository) FindMessageByClientID(ctx context.Context, convID uuid.UUID, clientMessageID string) (*Message, error) {
+	query := `
+		SELECT m.id, m.conversation_id, m.sender_id, m.type, COALESCE(m.content, ''), m.reply_to, COALESCE(m.client_message_id, ''), m.created_at, m.updated_at, m.deleted_at,
+		       CASE WHEN EXISTS (SELECT 1 FROM read_receipts rr WHERE rr.message_id = m.id) THEN 'read' ELSE 'sent' END AS status
+		FROM messages m
+		WHERE m.conversation_id = $1 AND m.client_message_id = $2 AND m.deleted_at IS NULL
+		LIMIT 1
+	`
+	var m Message
+	var contentStr string
+	var statusStr string
+	err := r.pool.QueryRow(ctx, query, convID, clientMessageID).Scan(
+		&m.ID, &m.ConversationID, &m.SenderID, &m.Type, &contentStr, &m.ReplyToID, &m.ClientMessageID, &m.CreatedAt, &m.UpdatedAt, &m.DeletedAt, &statusStr,
 	)
 	if err != nil {
 		return nil, err
@@ -317,13 +367,45 @@ func (r *PostgresChatRepository) CreateMessage(ctx context.Context, msg *Message
 	}
 	defer tx.Rollback(ctx)
 
-	query := `
-		INSERT INTO messages (id, conversation_id, sender_id, type, content, reply_to, created_at, updated_at)
-		VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
-	`
-	_, err = tx.Exec(ctx, query, msg.ID, msg.ConversationID, msg.SenderID, string(msg.Type), string(msg.Content), msg.ReplyToID, msg.CreatedAt, msg.CreatedAt)
-	if err != nil {
-		return err
+	if msg.ClientMessageID != "" {
+		query := `
+			INSERT INTO messages (id, conversation_id, sender_id, type, content, reply_to, client_message_id, created_at, updated_at)
+			VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+			ON CONFLICT (conversation_id, client_message_id) WHERE client_message_id IS NOT NULL DO NOTHING
+		`
+		tag, err := tx.Exec(ctx, query, msg.ID, msg.ConversationID, msg.SenderID, string(msg.Type), string(msg.Content), msg.ReplyToID, msg.ClientMessageID, msg.CreatedAt, msg.CreatedAt)
+		if err != nil {
+			return err
+		}
+		if tag.RowsAffected() == 0 {
+			// Message already exists due to concurrent or repeated insert with same client_message_id
+			existingQuery := `
+				SELECT id, conversation_id, sender_id, type, COALESCE(content, ''), reply_to, COALESCE(client_message_id, ''), created_at, updated_at, deleted_at,
+				       CASE WHEN EXISTS (SELECT 1 FROM read_receipts rr WHERE rr.message_id = messages.id) THEN 'read' ELSE 'sent' END AS status
+				FROM messages
+				WHERE conversation_id = $1 AND client_message_id = $2
+				LIMIT 1
+			`
+			var contentStr, statusStr string
+			err := tx.QueryRow(ctx, existingQuery, msg.ConversationID, msg.ClientMessageID).Scan(
+				&msg.ID, &msg.ConversationID, &msg.SenderID, &msg.Type, &contentStr, &msg.ReplyToID, &msg.ClientMessageID, &msg.CreatedAt, &msg.UpdatedAt, &msg.DeletedAt, &statusStr,
+			)
+			if err != nil {
+				return err
+			}
+			msg.Content = []byte(contentStr)
+			msg.Status = MessageStatus(statusStr)
+			return tx.Commit(ctx)
+		}
+	} else {
+		query := `
+			INSERT INTO messages (id, conversation_id, sender_id, type, content, reply_to, created_at, updated_at)
+			VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+		`
+		_, err = tx.Exec(ctx, query, msg.ID, msg.ConversationID, msg.SenderID, string(msg.Type), string(msg.Content), msg.ReplyToID, msg.CreatedAt, msg.CreatedAt)
+		if err != nil {
+			return err
+		}
 	}
 
 	// Update conversation's updated_at

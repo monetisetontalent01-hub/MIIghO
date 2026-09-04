@@ -40,10 +40,19 @@ class MiighoConversation {
   });
 
   factory MiighoConversation.fromJson(Map<String, dynamic> json) {
+    String subtitle = json['last_message']?['content'] as String? ?? '';
+    if (subtitle.isNotEmpty) {
+      try {
+        final decodedBytes = base64.decode(subtitle);
+        subtitle = utf8.decode(decodedBytes);
+      } catch (_) {
+        // Kept as plain text
+      }
+    }
     return MiighoConversation(
       id: json['id'] as String,
       title: json['name'] as String? ?? 'Discussion',
-      subtitle: json['last_message']?['content'] as String? ?? '',
+      subtitle: subtitle,
       avatarUrl: json['avatar_url'] as String?,
       updatedAt: json['updated_at'] != null ? DateTime.parse(json['updated_at']) : DateTime.now(),
       unreadCount: json['unread_count'] as int? ?? 0,
@@ -105,6 +114,7 @@ class MiighoMessageItem {
   final String? mediaFileName;
   final int? mediaFileSize;
   final Duration? mediaDuration;
+  final String? clientMessageId;
   final MessageReplyData? replyData;
   final List<MessageReactionData> reactions;
 
@@ -118,6 +128,7 @@ class MiighoMessageItem {
     required this.timestamp,
     this.editedAt,
     this.replyToId,
+    this.clientMessageId,
     this.mediaPath,
     this.mediaUrl,
     this.mediaFileName,
@@ -220,6 +231,8 @@ class MiighoMessageItem {
       }
     }
 
+    final clientMessageId = json['client_message_id'] as String? ?? metadata?['client_message_id'] as String?;
+
     return MiighoMessageItem(
       id: json['id'] as String,
       conversationId: json['conversation_id'] as String? ?? '',
@@ -230,6 +243,7 @@ class MiighoMessageItem {
       timestamp: json['created_at'] != null ? DateTime.parse(json['created_at']) : DateTime.now(),
       editedAt: json['edited_at'] != null ? DateTime.parse(json['edited_at']) : null,
       replyToId: replyToId,
+      clientMessageId: clientMessageId,
       mediaUrl: mediaUrl,
       mediaFileName: mediaFileName,
       mediaFileSize: mediaFileSize,
@@ -248,6 +262,7 @@ class MiighoMessageItem {
     DateTime? timestamp,
     DateTime? editedAt,
     String? replyToId,
+    String? clientMessageId,
     String? mediaPath,
     String? mediaUrl,
     String? mediaFileName,
@@ -266,6 +281,7 @@ class MiighoMessageItem {
       timestamp: timestamp ?? this.timestamp,
       editedAt: editedAt ?? this.editedAt,
       replyToId: replyToId ?? this.replyToId,
+      clientMessageId: clientMessageId ?? this.clientMessageId,
       mediaPath: mediaPath ?? this.mediaPath,
       mediaUrl: mediaUrl ?? this.mediaUrl,
       mediaFileName: mediaFileName ?? this.mediaFileName,

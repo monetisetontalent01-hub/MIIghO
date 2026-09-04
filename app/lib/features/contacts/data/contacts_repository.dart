@@ -46,7 +46,7 @@ class ContactsRepository {
             return Contact(
               id: m['user_id'] as String? ?? '',
               userId: m['user_id'] as String?,
-              displayName: m['phone_number'] as String? ?? 'Utilisateur MÏÏghO',
+              displayName: 'Utilisateur MÏÏghO',
               phoneNumber: m['phone_number'] as String? ?? '',
               isMiighoUser: true,
             );
@@ -150,5 +150,78 @@ class ContactsRepository {
   /// Format an invite message with MÏÏghO download link
   String getInviteMessage(String contactName) {
     return 'Salut $contactName ! Rejoins-moi sur MÏÏghO, la super-application africaine sécurisée et économique. Télécharge-la ici : https://miigho.africa/app';
+  }
+
+  /// Send a contact request to a user
+  Future<ContactRequest?> sendContactRequest(String recipientId) async {
+    try {
+      final response = await apiClient.post(
+        '/contacts/requests',
+        data: {'recipient_id': recipientId},
+      );
+      if ((response.statusCode == 200 || response.statusCode == 201) && response.data != null) {
+        final data = response.data['data'] ?? response.data;
+        if (data is Map<String, dynamic>) {
+          return ContactRequest.fromJson(data);
+        }
+      }
+    } catch (e) {
+      rethrow;
+    }
+    return null;
+  }
+
+  /// Get list of received contact requests
+  Future<List<ContactRequest>> getIncomingRequests() async {
+    try {
+      final response = await apiClient.get(
+        '/contacts/requests',
+        queryParameters: {'direction': 'received'},
+      );
+      if (response.statusCode == 200 && response.data != null) {
+        final data = response.data['data'] ?? response.data;
+        if (data is List) {
+          return data.map((json) => ContactRequest.fromJson(json as Map<String, dynamic>)).toList();
+        }
+      }
+    } catch (_) {}
+    return [];
+  }
+
+  /// Get list of sent contact requests
+  Future<List<ContactRequest>> getOutgoingRequests() async {
+    try {
+      final response = await apiClient.get(
+        '/contacts/requests',
+        queryParameters: {'direction': 'sent'},
+      );
+      if (response.statusCode == 200 && response.data != null) {
+        final data = response.data['data'] ?? response.data;
+        if (data is List) {
+          return data.map((json) => ContactRequest.fromJson(json as Map<String, dynamic>)).toList();
+        }
+      }
+    } catch (_) {}
+    return [];
+  }
+
+  /// Accept a contact request
+  Future<bool> acceptContactRequest(String requestId) async {
+    try {
+      final response = await apiClient.post('/contacts/requests/$requestId/accept');
+      return response.statusCode == 200;
+    } catch (_) {
+      return false;
+    }
+  }
+
+  /// Reject a contact request
+  Future<bool> rejectContactRequest(String requestId) async {
+    try {
+      final response = await apiClient.post('/contacts/requests/$requestId/reject');
+      return response.statusCode == 200;
+    } catch (_) {
+      return false;
+    }
   }
 }

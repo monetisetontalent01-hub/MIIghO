@@ -303,6 +303,13 @@ class _ChatScreenState extends State<ChatScreen> {
         if (state is MessagesLoaded && state.conversationId == widget.conversationId) {
           messages = state.messages;
           isTyping = state.isPeerTyping;
+          if (state.conversation != null) {
+            contactTitle = state.conversation!.title.isNotEmpty
+                ? state.conversation!.title
+                : 'Utilisateur MÏÏghO';
+            isGroup = state.conversation!.isGroup;
+            isOnline = state.conversation!.isOnline;
+          }
           // Trigger read receipt on load
           if (messages.isNotEmpty && !messages.first.isMe) {
             context.read<ChatBloc>().add(
@@ -325,7 +332,7 @@ class _ChatScreenState extends State<ChatScreen> {
               updatedAt: DateTime.now(),
             ),
           );
-          contactTitle = conv.title;
+          contactTitle = conv.title.isNotEmpty ? conv.title : 'Utilisateur MÏÏghO';
           isGroup = conv.isGroup;
           isOnline = conv.isOnline;
         }

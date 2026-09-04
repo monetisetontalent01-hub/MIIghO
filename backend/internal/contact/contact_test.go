@@ -53,6 +53,34 @@ func (m *mockContactRepo) UpdateContactStatus(ctx context.Context, ownerID, user
 	return nil
 }
 
+func (m *mockContactRepo) CreateContactRequest(ctx context.Context, senderID, recipientID uuid.UUID) (*ContactRequest, error) {
+	return &ContactRequest{ID: uuid.New(), SenderID: senderID, RecipientID: recipientID, Status: StatusPending}, nil
+}
+
+func (m *mockContactRepo) GetContactRequests(ctx context.Context, userID uuid.UUID, direction string) ([]ContactRequest, error) {
+	return nil, nil
+}
+
+func (m *mockContactRepo) GetContactRequest(ctx context.Context, id uuid.UUID) (*ContactRequest, error) {
+	return nil, nil
+}
+
+func (m *mockContactRepo) AcceptContactRequest(ctx context.Context, requestID, recipientID uuid.UUID) error {
+	return nil
+}
+
+func (m *mockContactRepo) RejectContactRequest(ctx context.Context, requestID, recipientID uuid.UUID) error {
+	return nil
+}
+
+func (m *mockContactRepo) AreContacts(ctx context.Context, userA, userB uuid.UUID) (bool, error) {
+	return true, nil
+}
+
+func (m *mockContactRepo) GetRelationshipStatus(ctx context.Context, currentUserID, otherUserID uuid.UUID) (RelationshipStatus, error) {
+	return RelNone, nil
+}
+
 func TestContactHandler_SearchContacts(t *testing.T) {
 	currentUserID := uuid.New()
 	targetUserID := uuid.New()
