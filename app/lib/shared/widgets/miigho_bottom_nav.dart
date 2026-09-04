@@ -1,9 +1,10 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:go_router/go_router.dart';
-import '../../core/config/demo_data.dart';
 import '../../core/models/module_status.dart';
 import '../../core/theme/colors.dart';
 import '../../core/l10n/miigho_strings.dart';
+import '../../features/chat/presentation/bloc/chat_bloc.dart';
 import 'miigho_status_badge.dart';
 
 class MiighoBottomNav extends StatelessWidget {
@@ -246,6 +247,10 @@ class MiighoBottomNav extends StatelessWidget {
     final theme = Theme.of(context);
     final isDark = theme.brightness == Brightness.dark;
     final strings = MiighoStrings.of(context);
+    final chatState = context.watch<ChatBloc>().state;
+    final unreadCount = chatState is ConversationsLoaded
+        ? chatState.conversations.fold<int>(0, (sum, c) => sum + c.unreadCount)
+        : 0;
 
     return Container(
       decoration: BoxDecoration(
@@ -281,16 +286,20 @@ class MiighoBottomNav extends StatelessWidget {
               label: strings.navHome,
             ),
             BottomNavigationBarItem(
-              icon: Badge(
-                label: const Text('${DemoDataProvider.unreadMessageCount}'),
-                backgroundColor: MiighoColors.primary,
-                child: const Icon(Icons.chat_bubble_outline_rounded),
-              ),
-              activeIcon: Badge(
-                label: const Text('${DemoDataProvider.unreadMessageCount}'),
-                backgroundColor: MiighoColors.primary,
-                child: const Icon(Icons.chat_bubble_rounded),
-              ),
+              icon: unreadCount > 0
+                  ? Badge(
+                      label: Text('$unreadCount'),
+                      backgroundColor: MiighoColors.primary,
+                      child: const Icon(Icons.chat_bubble_outline_rounded),
+                    )
+                  : const Icon(Icons.chat_bubble_outline_rounded),
+              activeIcon: unreadCount > 0
+                  ? Badge(
+                      label: Text('$unreadCount'),
+                      backgroundColor: MiighoColors.primary,
+                      child: const Icon(Icons.chat_bubble_rounded),
+                    )
+                  : const Icon(Icons.chat_bubble_rounded),
               label: strings.navChat,
             ),
             BottomNavigationBarItem(

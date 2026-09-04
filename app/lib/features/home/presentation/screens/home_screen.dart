@@ -1,7 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:go_router/go_router.dart';
-import '../../../../core/config/demo_data.dart';
+import '../../../identity/presentation/bloc/identity_bloc.dart';
+import '../../../chat/presentation/bloc/chat_bloc.dart';
 import '../../../../core/models/module_status.dart';
 import '../../../../core/theme/colors.dart';
 import '../../../../core/theme/theme_cubit.dart';
@@ -28,91 +29,90 @@ class _HomeScreenState extends State<HomeScreen> {
     final theme = Theme.of(context);
     final isDark = theme.brightness == Brightness.dark;
     final strings = MiighoStrings.of(context);
-    final user = DemoDataProvider.currentUser;
-    final transactions = DemoDataProvider.getRecentTransactions();
 
-    return Scaffold(
-      backgroundColor: isDark ? MiighoColors.canvas : MiighoColors.lightCanvas,
-      appBar: AppBar(
-        titleSpacing: 20,
-        title: Row(
-          children: [
-            const MiighoLogo(
-              size: 32,
-              variant: MiighoLogoVariant.markOnly,
-            ),
-            const SizedBox(width: 10),
-            Text(
-              'MÏÏghO OS',
-              style: TextStyle(
-                fontFamily: 'Outfit',
-                fontSize: 18,
-                fontWeight: FontWeight.w800,
-                color: isDark ? MiighoColors.textPrimary : MiighoColors.lightTextPrimary,
-                letterSpacing: -0.3,
-              ),
-            ),
-            const SizedBox(width: 8),
-            Container(
-              padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-              decoration: BoxDecoration(
-                color: MiighoColors.primaryAlpha,
-                borderRadius: BorderRadius.circular(6),
-                border: Border.all(color: MiighoColors.primary.withValues(alpha: 0.3)),
-              ),
-              child: const Text(
-                'DEMO',
-                style: TextStyle(
-                  fontSize: 10,
-                  fontWeight: FontWeight.w800,
-                  color: MiighoColors.primaryLight,
-                  letterSpacing: 0.5,
+    return BlocBuilder<IdentityBloc, IdentityState>(
+      builder: (context, identityState) {
+        String displayName = 'Membre MÏÏghO';
+        String miighoId = '@miigho';
+        String kycLevel = 'Niveau 1 (Actif)';
+
+        if (identityState is IdentityLoaded) {
+          displayName = identityState.profile.displayName;
+          miighoId = identityState.profile.miighoId;
+          kycLevel = identityState.profile.kycLevel;
+        }
+
+        return BlocBuilder<ChatBloc, ChatState>(
+          builder: (context, chatState) {
+            int unreadCount = 0;
+            if (chatState is ConversationsLoaded) {
+              unreadCount = chatState.conversations.fold<int>(0, (sum, c) => sum + c.unreadCount);
+            }
+
+            return Scaffold(
+              backgroundColor: isDark ? MiighoColors.canvas : MiighoColors.lightCanvas,
+              appBar: AppBar(
+                titleSpacing: 20,
+                title: Row(
+                  children: [
+                    const MiighoLogo(
+                      size: 32,
+                      variant: MiighoLogoVariant.markOnly,
+                    ),
+                    const SizedBox(width: 10),
+                    Text(
+                      'MÏÏghO OS',
+                      style: TextStyle(
+                        fontFamily: 'Outfit',
+                        fontSize: 18,
+                        fontWeight: FontWeight.w800,
+                        color: isDark ? MiighoColors.textPrimary : MiighoColors.lightTextPrimary,
+                        letterSpacing: -0.3,
+                      ),
+                    ),
+                  ],
                 ),
+                actions: [
+                  IconButton(
+                    tooltip: 'Basculer Thème',
+                    icon: Icon(
+                      isDark ? Icons.light_mode_outlined : Icons.dark_mode_outlined,
+                      size: 22,
+                      color: isDark ? MiighoColors.textSecondary : MiighoColors.lightTextSecondary,
+                    ),
+                    onPressed: () => context.read<ThemeCubit>().toggleTheme(),
+                  ),
+                  IconButton(
+                    tooltip: 'Recherche Globale',
+                    icon: Icon(
+                      Icons.search_rounded,
+                      size: 22,
+                      color: isDark ? MiighoColors.textSecondary : MiighoColors.lightTextSecondary,
+                    ),
+                    onPressed: () {
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        const SnackBar(
+                          content: Text('Recherche globale MÏÏghO (Bientôt disponible)'),
+                          duration: Duration(seconds: 1),
+                        ),
+                      );
+                    },
+                  ),
+                  Padding(
+                    padding: const EdgeInsets.only(right: 16, left: 4),
+                    child: InkWell(
+                      onTap: () => context.push('/identity'),
+                      borderRadius: BorderRadius.circular(20),
+                      child: MiighoAvatar(
+                        name: displayName,
+                        size: MiighoAvatarSize.sm,
+                        isOnline: true,
+                        showPresenceIndicator: true,
+                      ),
+                    ),
+                  ),
+                ],
               ),
-            ),
-          ],
-        ),
-        actions: [
-          IconButton(
-            tooltip: 'Basculer Thème',
-            icon: Icon(
-              isDark ? Icons.light_mode_outlined : Icons.dark_mode_outlined,
-              size: 22,
-              color: isDark ? MiighoColors.textSecondary : MiighoColors.lightTextSecondary,
-            ),
-            onPressed: () => context.read<ThemeCubit>().toggleTheme(),
-          ),
-          IconButton(
-            tooltip: 'Recherche Globale',
-            icon: Icon(
-              Icons.search_rounded,
-              size: 22,
-              color: isDark ? MiighoColors.textSecondary : MiighoColors.lightTextSecondary,
-            ),
-            onPressed: () {
-              ScaffoldMessenger.of(context).showSnackBar(
-                const SnackBar(
-                  content: Text('Recherche globale MÏÏghO (Bientôt disponible)'),
-                  duration: Duration(seconds: 1),
-                ),
-              );
-            },
-          ),
-          Padding(
-            padding: const EdgeInsets.only(right: 16, left: 4),
-            child: InkWell(
-              onTap: () => context.push('/identity'),
-              borderRadius: BorderRadius.circular(20),
-              child: MiighoAvatar(
-                name: user.displayName,
-                size: MiighoAvatarSize.sm,
-                isOnline: true,
-                showPresenceIndicator: true,
-              ),
-            ),
-          ),
-        ],
-      ),
       body: LayoutBuilder(
         builder: (context, constraints) {
           final isWide = constraints.maxWidth >= 900;
@@ -139,7 +139,7 @@ class _HomeScreenState extends State<HomeScreen> {
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
                         Text(
-                          '${strings.greeting}, ${user.displayName.split(' ').first}',
+                          '${strings.greeting}, ${displayName.split(' ').first}',
                           style: TextStyle(
                             fontFamily: 'Outfit',
                             fontSize: isWide ? 28 : 22,
@@ -152,7 +152,7 @@ class _HomeScreenState extends State<HomeScreen> {
                         Row(
                           children: [
                             Text(
-                              user.miighoId,
+                              miighoId,
                               style: const TextStyle(
                                 fontSize: 12,
                                 fontWeight: FontWeight.w700,
@@ -163,7 +163,7 @@ class _HomeScreenState extends State<HomeScreen> {
                             const Text('•', style: TextStyle(color: Colors.grey)),
                             const SizedBox(width: 8),
                             Text(
-                              user.kycLevel,
+                              kycLevel,
                               style: TextStyle(
                                 fontSize: 12,
                                 color: isDark ? MiighoColors.textSecondary : MiighoColors.lightTextSecondary,
@@ -213,7 +213,7 @@ class _HomeScreenState extends State<HomeScreen> {
                 const SizedBox(height: 20),
 
                 // Raccourcis Activité & Messages
-                _buildOverviewTiles(context, isDark, strings),
+                _buildOverviewTiles(context, isDark, strings, unreadCount),
 
                 const SizedBox(height: 28),
 
@@ -270,7 +270,7 @@ class _HomeScreenState extends State<HomeScreen> {
 
                 const SizedBox(height: 32),
 
-                // Activité récente (Sandbox Transactions)
+                // Activité récente
                 Row(
                   mainAxisAlignment: MainAxisAlignment.spaceBetween,
                   children: [
@@ -291,7 +291,46 @@ class _HomeScreenState extends State<HomeScreen> {
                 ),
                 const SizedBox(height: 8),
 
-                ...transactions.map((tx) => _buildTransactionTile(context, tx, isDark)),
+                BlocBuilder<PayBloc, PayState>(
+                  builder: (context, payState) {
+                    final txs = (payState is PayLoaded) ? payState.transactions : <UserTransactionItem>[];
+                    if (txs.isNotEmpty) {
+                      return Column(
+                        children: txs.take(5).map((tx) => _buildTransactionTile(context, tx, isDark)).toList(),
+                      );
+                    }
+                    return Container(
+                      padding: const EdgeInsets.symmetric(vertical: 24, horizontal: 16),
+                      decoration: BoxDecoration(
+                        color: isDark ? MiighoColors.surface2 : MiighoColors.lightSurface1,
+                        borderRadius: BorderRadius.circular(14),
+                        border: Border.all(
+                          color: isDark ? MiighoColors.borderSubtle : MiighoColors.lightBorderSubtle,
+                        ),
+                      ),
+                      child: Center(
+                        child: Column(
+                          children: [
+                            Icon(
+                              Icons.receipt_long_outlined,
+                              size: 32,
+                              color: isDark ? MiighoColors.textMuted : MiighoColors.lightTextMuted,
+                            ),
+                            const SizedBox(height: 8),
+                            Text(
+                              'Aucune transaction récente',
+                              style: TextStyle(
+                                fontSize: 13,
+                                fontWeight: FontWeight.w600,
+                                color: isDark ? MiighoColors.textSecondary : MiighoColors.lightTextSecondary,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    );
+                  },
+                ),
 
                 const SizedBox(height: 40),
               ],
@@ -300,7 +339,11 @@ class _HomeScreenState extends State<HomeScreen> {
         ),
       );
     },
-      ),
+  ),
+);
+          },
+        );
+      },
     );
   }
 
@@ -375,9 +418,9 @@ class _HomeScreenState extends State<HomeScreen> {
             ],
           ),
           const SizedBox(height: 6),
-          BlocBuilder<PayBloc, PayState>(
+            BlocBuilder<PayBloc, PayState>(
             builder: (context, payState) {
-              int balance = 45000;
+              int balance = 0;
               String currency = 'FCFA';
               if (payState is PayLoaded) {
                 balance = payState.wallet.availableBalance;
@@ -509,7 +552,7 @@ class _HomeScreenState extends State<HomeScreen> {
     );
   }
 
-  Widget _buildOverviewTiles(BuildContext context, bool isDark, MiighoStrings strings) {
+  Widget _buildOverviewTiles(BuildContext context, bool isDark, MiighoStrings strings, int unreadCount) {
     return Row(
       children: [
         // Discussions non lues
@@ -547,7 +590,9 @@ class _HomeScreenState extends State<HomeScreen> {
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
                         Text(
-                          '${DemoDataProvider.unreadMessageCount} ${strings.unreadMessages}',
+                          unreadCount > 0
+                              ? '$unreadCount ${strings.unreadMessages}'
+                              : '0 message non lu',
                           style: TextStyle(
                             fontSize: 13,
                             fontWeight: FontWeight.w700,
@@ -634,7 +679,7 @@ class _HomeScreenState extends State<HomeScreen> {
     );
   }
 
-  Widget _buildTransactionTile(BuildContext context, DemoTransaction tx, bool isDark) {
+  Widget _buildTransactionTile(BuildContext context, UserTransactionItem tx, bool isDark) {
     return Container(
       margin: const EdgeInsets.only(bottom: 8),
       decoration: BoxDecoration(
@@ -683,7 +728,7 @@ class _HomeScreenState extends State<HomeScreen> {
               ),
             ),
             Text(
-              tx.status,
+              tx.status.label,
               style: TextStyle(
                 fontSize: 10,
                 color: isDark ? MiighoColors.textMuted : MiighoColors.lightTextMuted,

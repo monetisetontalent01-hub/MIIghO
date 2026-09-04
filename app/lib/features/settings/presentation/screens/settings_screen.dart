@@ -1,12 +1,12 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:go_router/go_router.dart';
-import '../../../../core/config/demo_data.dart';
 import '../../../../core/theme/colors.dart';
 import '../../../../core/theme/theme_cubit.dart';
 import '../../../../core/l10n/locale_cubit.dart';
 import '../../../../shared/widgets/miigho_avatar.dart';
 import '../../../auth/presentation/bloc/auth_bloc.dart';
+import '../../../identity/presentation/bloc/identity_bloc.dart';
 
 class SettingsScreen extends StatelessWidget {
   const SettingsScreen({super.key});
@@ -15,7 +15,16 @@ class SettingsScreen extends StatelessWidget {
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final isDark = theme.brightness == Brightness.dark;
-    final user = DemoDataProvider.currentUser;
+    final identityState = context.watch<IdentityBloc>().state;
+    final displayName = identityState is IdentityLoaded
+        ? identityState.profile.displayName
+        : 'Utilisateur MÏÏghO';
+    final miighoId = identityState is IdentityLoaded
+        ? identityState.profile.miighoId
+        : '';
+    final phoneNumber = identityState is IdentityLoaded
+        ? identityState.profile.phoneNumber
+        : '';
     final themeCubit = context.watch<ThemeCubit>();
     final localeCubit = context.watch<LocaleCubit>();
 
@@ -53,7 +62,7 @@ class SettingsScreen extends StatelessWidget {
               child: Row(
                 children: [
                   MiighoAvatar(
-                    name: user.displayName,
+                    name: displayName,
                     size: MiighoAvatarSize.lg,
                     isOnline: true,
                   ),
@@ -63,31 +72,35 @@ class SettingsScreen extends StatelessWidget {
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
                         Text(
-                          user.displayName,
+                          displayName,
                           style: const TextStyle(
                             color: Colors.white,
                             fontSize: 17,
                             fontWeight: FontWeight.bold,
                           ),
                         ),
-                        const SizedBox(height: 3),
-                        Text(
-                          user.miighoId,
-                          style: const TextStyle(
-                            fontFamily: 'Space Grotesk',
-                            color: MiighoColors.goldLight,
-                            fontSize: 13,
-                            fontWeight: FontWeight.w700,
+                        if (miighoId.isNotEmpty) ...[
+                          const SizedBox(height: 3),
+                          Text(
+                            miighoId,
+                            style: const TextStyle(
+                              fontFamily: 'Space Grotesk',
+                              color: MiighoColors.goldLight,
+                              fontSize: 13,
+                              fontWeight: FontWeight.w700,
+                            ),
                           ),
-                        ),
-                        const SizedBox(height: 3),
-                        Text(
-                          user.phoneNumber,
-                          style: const TextStyle(
-                            color: Colors.white70,
-                            fontSize: 12,
+                        ],
+                        if (phoneNumber.isNotEmpty) ...[
+                          const SizedBox(height: 3),
+                          Text(
+                            phoneNumber,
+                            style: const TextStyle(
+                              color: Colors.white70,
+                              fontSize: 12,
+                            ),
                           ),
-                        ),
+                        ],
                       ],
                     ),
                   ),

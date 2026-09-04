@@ -1,5 +1,3 @@
-import 'package:flutter/material.dart';
-import '../../../../core/config/demo_data.dart';
 import '../../../../core/network/api_client.dart';
 import '../../../../core/storage/secure_storage.dart';
 
@@ -76,36 +74,19 @@ class IdentityRepository {
   final SecureStorageService secureStorage;
 
   UserProfile _cachedProfile = UserProfile(
-    id: DemoDataProvider.currentUser.id,
-    miighoId: DemoDataProvider.currentUser.miighoId,
-    displayName: DemoDataProvider.currentUser.displayName,
-    phoneNumber: DemoDataProvider.currentUser.phoneNumber,
-    email: DemoDataProvider.currentUser.email,
-    bio: 'Pionnier MÏÏghO • Construisons l\'écosystème numérique africain.',
-    country: DemoDataProvider.currentUser.country,
-    kycLevel: DemoDataProvider.currentUser.kycLevel,
-    isVerified: DemoDataProvider.currentUser.isVerified,
-    createdAt: DateTime(2026, 1, 15),
+    id: '',
+    miighoId: '@miigho',
+    displayName: 'Membre MÏÏghO',
+    phoneNumber: '',
+    email: '',
+    bio: '',
+    country: 'Afrique 🌍',
+    kycLevel: 'Niveau 1 (Actif)',
+    isVerified: true,
+    createdAt: DateTime.now(),
   );
 
-  final List<UserSession> _sessions = [
-    UserSession(
-      id: 'sess_01',
-      deviceName: 'iPhone 15 Pro (Cet appareil)',
-      platform: 'iOS • MÏÏghO Mobile',
-      ipAddress: '197.234.221.14 (Abidjan, CI)',
-      lastActive: DateTime.now(),
-      isCurrent: true,
-    ),
-    UserSession(
-      id: 'sess_02',
-      deviceName: 'MacBook Pro M3 Max',
-      platform: 'macOS • MÏÏghO Web / Desktop',
-      ipAddress: '197.234.221.14 (Abidjan, CI)',
-      lastActive: DateTime.now().subtract(const Duration(hours: 2)),
-      isCurrent: false,
-    ),
-  ];
+  final List<UserSession> _sessions = [];
 
   IdentityRepository({
     required this.apiClient,
@@ -113,27 +94,64 @@ class IdentityRepository {
   });
 
   Future<UserProfile> getProfile() async {
+    final storedPhone = await secureStorage.getPhone() ?? '';
+    final storedUserId = await secureStorage.getUserId() ?? '';
+
     try {
-      final response = await apiClient.get('/user/profile');
+      final response = await apiClient.get('/users/me');
       final data = response.data;
       if (data is Map<String, dynamic> && data['data'] != null) {
         final d = data['data'] as Map<String, dynamic>;
+        final firstName = d['first_name'] as String? ?? '';
+        final lastName = d['last_name'] as String? ?? '';
+        final fullName = '$firstName $lastName'.trim();
+        final phone = d['phone_number'] as String? ?? storedPhone;
+        final id = d['id'] as String? ?? storedUserId;
+
+        final displayName = fullName.isNotEmpty
+            ? fullName
+            : (phone.isNotEmpty ? phone : 'Membre MÏÏghO');
+
+        final miighoId = phone.isNotEmpty
+            ? '@${phone.replaceAll('+', '')}'
+            : (id.isNotEmpty ? 'MG-${id.substring(0, 8).toUpperCase()}' : '@miigho');
+
         _cachedProfile = UserProfile(
-          id: d['id'] as String? ?? _cachedProfile.id,
-          miighoId: d['miigho_id'] as String? ?? _cachedProfile.miighoId,
-          displayName: '${d['first_name'] ?? ''} ${d['last_name'] ?? ''}'.trim(),
-          phoneNumber: d['phone_number'] as String? ?? _cachedProfile.phoneNumber,
-          email: d['email'] as String? ?? _cachedProfile.email,
-          bio: d['status_message'] as String? ?? _cachedProfile.bio,
-          avatarUrl: d['avatar_url'] as String?,
-          country: _cachedProfile.country,
-          kycLevel: _cachedProfile.kycLevel,
-          isVerified: _cachedProfile.isVerified,
-          createdAt: _cachedProfile.createdAt,
+          id: id,
+          miighoId: miighoId,
+          displayName: displayName,
+          phoneNumber: phone,
+          email: d['email'] as String? ?? '',
+          bio: d['status_message'] as String? ?? '',
+          avatarUrl: (d['avatar_url'] as String?)?.isNotEmpty == true ? d['avatar_url'] as String : null,
+          country: phone.startsWith('+243')
+              ? 'RD Congo 🇨🇩'
+              : (phone.startsWith('+225') ? 'Côte d\'Ivoire 🇨🇮' : 'Afrique 🌍'),
+          kycLevel: 'Niveau 1 (Actif)',
+          isVerified: true,
+          createdAt: d['created_at'] != null
+              ? DateTime.tryParse(d['created_at'].toString()) ?? DateTime.now()
+              : DateTime.now(),
         );
       }
       return _cachedProfile;
     } catch (_) {
+      if (storedPhone.isNotEmpty || storedUserId.isNotEmpty) {
+        _cachedProfile = UserProfile(
+          id: storedUserId,
+          miighoId: storedPhone.isNotEmpty ? '@${storedPhone.replaceAll('+', '')}' : '@miigho',
+          displayName: storedPhone.isNotEmpty ? storedPhone : 'Membre MÏÏghO',
+          phoneNumber: storedPhone,
+          email: '',
+          bio: '',
+          country: storedPhone.startsWith('+243')
+              ? 'RD Congo 🇨🇩'
+              : (storedPhone.startsWith('+225') ? 'Côte d\'Ivoire 🇨🇮' : 'Afrique 🌍'),
+          kycLevel: 'Niveau 1 (Actif)',
+          isVerified: true,
+          createdAt: DateTime.now(),
+        );
+      }
       return _cachedProfile;
     }
   }
@@ -148,12 +166,10 @@ class IdentityRepository {
       final parts = displayName.split(' ');
       final firstName = parts.first;
       final lastName = parts.length > 1 ? parts.sublist(1).join(' ') : '';
-      await apiClient.put('/user/profile', data: {
+      await apiClient.put('/users/me', data: {
         'first_name': firstName,
         'last_name': lastName,
-        'email': email,
         'status_message': bio,
-        'avatar_url': avatarUrl,
       });
     } catch (_) {}
 
@@ -167,6 +183,18 @@ class IdentityRepository {
   }
 
   Future<List<UserSession>> getSessions() async {
+    if (_sessions.isEmpty) {
+      _sessions.add(
+        UserSession(
+          id: 'sess_current',
+          deviceName: 'Navigateur Web (Cet appareil)',
+          platform: 'Web • MÏÏghO Staging',
+          ipAddress: 'Session active',
+          lastActive: DateTime.now(),
+          isCurrent: true,
+        ),
+      );
+    }
     return List.unmodifiable(_sessions);
   }
 

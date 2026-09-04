@@ -1,5 +1,3 @@
-import 'package:flutter/material.dart';
-
 extension DateTimeExtensions on DateTime {
   String toRelative() {
     final now = DateTime.now();
@@ -9,7 +7,7 @@ extension DateTimeExtensions on DateTime {
     if (difference.inHours < 1) return '${difference.inMinutes}m';
     if (difference.inDays < 1) return '${difference.inHours}h';
     if (difference.inDays == 1) return 'Hier';
-    return '${day.toString().padLeft(2, '0')}/${month.toString().padLeft(2, '0')}/${year}';
+    return '${day.toString().padLeft(2, '0')}/${month.toString().padLeft(2, '0')}/$year';
   }
 }
 

@@ -1,12 +1,13 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:go_router/go_router.dart';
-import '../../core/config/demo_data.dart';
 import '../../core/models/module_status.dart';
 import '../../core/theme/colors.dart';
 import '../../core/theme/theme_cubit.dart';
 import '../../core/l10n/miigho_strings.dart';
 import '../../features/auth/presentation/bloc/auth_bloc.dart';
+import '../../features/chat/presentation/bloc/chat_bloc.dart';
+import '../../features/identity/presentation/bloc/identity_bloc.dart';
 import 'miigho_avatar.dart';
 import 'miigho_logo.dart';
 import 'miigho_status_badge.dart';
@@ -24,6 +25,17 @@ class MiighoSidebar extends StatelessWidget {
     final theme = Theme.of(context);
     final isDark = theme.brightness == Brightness.dark;
     final strings = MiighoStrings.of(context);
+    final chatState = context.watch<ChatBloc>().state;
+    final unreadCount = chatState is ConversationsLoaded
+        ? chatState.conversations.fold<int>(0, (sum, c) => sum + c.unreadCount)
+        : 0;
+    final identityState = context.watch<IdentityBloc>().state;
+    final userName = identityState is IdentityLoaded
+        ? identityState.profile.displayName
+        : 'MÏÏghO User';
+    final userMiighoId = identityState is IdentityLoaded
+        ? identityState.profile.miighoId
+        : '';
 
     return Container(
       width: 280,
@@ -76,7 +88,7 @@ class MiighoSidebar extends StatelessWidget {
                   activeIcon: Icons.chat_bubble_rounded,
                   route: '/conversations',
                   isSelected: currentRoute.startsWith('/conversations'),
-                  badgeText: '${DemoDataProvider.unreadMessageCount}',
+                  badgeText: unreadCount > 0 ? '$unreadCount' : null,
                   badgeColor: MiighoColors.primary,
                   status: ModuleStatus.active,
                   isDark: isDark,
@@ -178,7 +190,7 @@ class MiighoSidebar extends StatelessWidget {
                     child: Row(
                       children: [
                         MiighoAvatar(
-                          name: DemoDataProvider.currentUser.displayName,
+                          name: userName,
                           size: MiighoAvatarSize.sm,
                           isOnline: true,
                         ),
@@ -188,7 +200,7 @@ class MiighoSidebar extends StatelessWidget {
                             crossAxisAlignment: CrossAxisAlignment.start,
                             children: [
                               Text(
-                                DemoDataProvider.currentUser.displayName,
+                                userName,
                                 maxLines: 1,
                                 overflow: TextOverflow.ellipsis,
                                 style: TextStyle(
@@ -197,14 +209,15 @@ class MiighoSidebar extends StatelessWidget {
                                   color: isDark ? MiighoColors.textPrimary : MiighoColors.lightTextPrimary,
                                 ),
                               ),
-                              Text(
-                                DemoDataProvider.currentUser.miighoId,
-                                style: const TextStyle(
-                                  fontSize: 11,
-                                  color: MiighoColors.gold,
-                                  fontWeight: FontWeight.w600,
+                              if (userMiighoId.isNotEmpty)
+                                Text(
+                                  userMiighoId,
+                                  style: const TextStyle(
+                                    fontSize: 11,
+                                    color: MiighoColors.gold,
+                                    fontWeight: FontWeight.w600,
+                                  ),
                                 ),
-                              ),
                             ],
                           ),
                         ),

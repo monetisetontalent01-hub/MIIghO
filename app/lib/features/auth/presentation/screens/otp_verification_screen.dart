@@ -4,6 +4,9 @@ import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:go_router/go_router.dart';
 import '../../../../core/theme/colors.dart';
 import '../bloc/auth_bloc.dart';
+import '../../../identity/presentation/bloc/identity_bloc.dart';
+import '../../../chat/presentation/bloc/chat_bloc.dart';
+import '../../../pay/presentation/bloc/pay_bloc.dart';
 import '../../../../shared/widgets/miigho_button.dart';
 import '../../../../shared/widgets/miigho_text_field.dart';
 
@@ -50,7 +53,10 @@ class _OtpVerificationScreenState extends State<OtpVerificationScreen> {
       body: BlocConsumer<AuthBloc, AuthState>(
         listener: (context, state) {
           if (state is AuthAuthenticated) {
-            context.go('/auth/profile-setup');
+            context.read<IdentityBloc>().add(LoadIdentity());
+            context.read<ChatBloc>().add(LoadConversations());
+            context.read<PayBloc>().add(LoadPayWallet());
+            context.go('/home');
           } else if (state is AuthError) {
             ScaffoldMessenger.of(context).showSnackBar(
               SnackBar(
