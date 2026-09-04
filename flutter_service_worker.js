@@ -3,11 +3,11 @@ const MANIFEST = 'flutter-app-manifest';
 const TEMP = 'flutter-temp-cache';
 const CACHE_NAME = 'flutter-app-cache';
 
-const RESOURCES = {"flutter_bootstrap.js": "e856cfc5d0adc2ea874ab32f074f7778",
+const RESOURCES = {"flutter_bootstrap.js": "4f385bdfea835e7ece7411a4a8a05bb6",
 "version.json": "1dbf3b04ef0e4377417e019ae47e774f",
 "index.html": "98442d2abbaf433771544a42032db813",
 "/": "98442d2abbaf433771544a42032db813",
-"main.dart.js": "b64cf6f1b51f5c88f6c2da888a183b2f",
+"main.dart.js": "5a11fd34eba4783db77fc93e791b14d3",
 "flutter.js": "76f08d47ff9f5715220992f993002504",
 "favicon.png": "5dcef449791fa27946b3d35ad8803796",
 "icons/Icon-192.png": "ac9a721a12bbc803b44f645561ecb1e1",
@@ -23,7 +23,7 @@ const RESOURCES = {"flutter_bootstrap.js": "e856cfc5d0adc2ea874ab32f074f7778",
 "assets/packages/record_web/assets/js/record.worklet.js": "6d247986689d283b7e45ccdf7214c2ff",
 "assets/shaders/ink_sparkle.frag": "ecc85a2e95f5e9f53123dcaf8cb9b6ce",
 "assets/AssetManifest.bin": "d2dae46debfb6f1f9986fe98e6bf615e",
-"assets/fonts/MaterialIcons-Regular.otf": "347fb1689dff24bc5fa88c83059bc802",
+"assets/fonts/MaterialIcons-Regular.otf": "ac37037708d99a23e943145cd5960e0a",
 "assets/assets/images/miigho_logo.jpg": "c4931a711ddf9747fcc278042888dffb",
 "canvaskit/skwasm_st.js": "d1326ceef381ad382ab492ba5d96f04d",
 "canvaskit/skwasm.js": "f2ad9363618c5f62e813740099a80e63",
