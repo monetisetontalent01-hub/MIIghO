@@ -32,7 +32,10 @@ class MiighoSidebar extends StatelessWidget {
     final identityState = context.watch<IdentityBloc>().state;
     final userName = identityState is IdentityLoaded
         ? identityState.profile.displayName
-        : 'MÏÏghO User';
+        : 'Nom à définir';
+    final userPhone = identityState is IdentityLoaded
+        ? identityState.profile.phoneNumber
+        : '';
     final userMiighoId = identityState is IdentityLoaded
         ? identityState.profile.miighoId
         : '';
@@ -209,6 +212,17 @@ class MiighoSidebar extends StatelessWidget {
                                   color: isDark ? MiighoColors.textPrimary : MiighoColors.lightTextPrimary,
                                 ),
                               ),
+                              if (userPhone.isNotEmpty)
+                                Text(
+                                  userPhone,
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
+                                  style: TextStyle(
+                                    fontSize: 11,
+                                    color: isDark ? MiighoColors.textSecondary : MiighoColors.lightTextSecondary,
+                                    fontWeight: FontWeight.w500,
+                                  ),
+                                ),
                               if (userMiighoId.isNotEmpty)
                                 Text(
                                   userMiighoId,

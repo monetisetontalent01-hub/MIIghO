@@ -53,16 +53,16 @@ class IdentityScreen extends StatelessWidget {
             sessions = state.sessions;
           } else {
             profile = UserProfile(
-              id: 'usr_demo_01',
-              miighoId: 'MG-9824-CIV',
-              displayName: 'Mamadou Koné',
-              phoneNumber: '+225 07 00 00 00 00',
-              email: 'mamadou.kone@miigho.africa',
-              bio: 'Pionnier MÏÏghO • Construisons l\'écosystème numérique africain.',
-              country: 'Côte d\'Ivoire 🇨🇮',
-              kycLevel: 'Niveau 2 (Vérifié)',
-              isVerified: true,
-              createdAt: DateTime(2026, 1, 1),
+              id: '',
+              miighoId: '@miigho',
+              displayName: 'Nom à définir',
+              phoneNumber: '',
+              email: '',
+              bio: '',
+              country: 'Afrique 🌍',
+              kycLevel: 'Niveau 1 (Actif)',
+              isVerified: false,
+              createdAt: DateTime.now(),
             );
           }
 
@@ -151,6 +151,17 @@ class IdentityScreen extends StatelessWidget {
                                   fontWeight: FontWeight.w800,
                                 ),
                               ),
+                              if (profile.phoneNumber.isNotEmpty) ...[
+                                const SizedBox(height: 2),
+                                Text(
+                                  profile.phoneNumber,
+                                  style: TextStyle(
+                                    color: Colors.white.withValues(alpha: 0.9),
+                                    fontSize: 13,
+                                    fontWeight: FontWeight.w600,
+                                  ),
+                                ),
+                              ],
                               const SizedBox(height: 4),
                               Text(
                                 profile.miighoId,
@@ -393,14 +404,5 @@ class IdentityScreen extends StatelessWidget {
         ),
       ),
     );
-  }
-}
-
-class _EditProfileWrapper extends StatelessWidget {
-  const _EditProfileWrapper();
-
-  @override
-  Widget build(BuildContext context) {
-    return const EditProfileScreen();
   }
 }

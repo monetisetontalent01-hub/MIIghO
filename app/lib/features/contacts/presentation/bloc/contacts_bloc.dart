@@ -260,8 +260,12 @@ class ContactsBloc extends Bloc<ContactsEvent, ContactsState> {
     List<Contact> searchResults = activeContacts;
     if (searchQuery.isNotEmpty) {
       final q = searchQuery.toLowerCase().trim();
+      final qNorm = q.replaceAll('+', '').replaceAll(' ', '');
       searchResults = activeContacts.where((c) {
-        return c.displayName.toLowerCase().contains(q) || c.phoneNumber.contains(q);
+        final phoneNorm = c.phoneNumber.replaceAll('+', '').replaceAll(' ', '');
+        return c.displayName.toLowerCase().contains(q) ||
+            c.phoneNumber.contains(q) ||
+            (qNorm.isNotEmpty && phoneNorm.contains(qNorm));
       }).toList();
     }
 

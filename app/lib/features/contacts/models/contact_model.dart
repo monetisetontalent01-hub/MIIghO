@@ -33,14 +33,18 @@ class Contact extends Equatable {
 
   /// Factory from JSON map (from MÏÏghO backend API)
   factory Contact.fromJson(Map<String, dynamic> json) {
+    final rawId = json['id'] as String? ?? json['user_id'] as String? ?? '';
+    final phone = json['phone_number'] as String? ?? json['phone'] as String? ?? '';
+    final rawName = json['display_name'] as String? ?? json['name'] as String? ?? '';
+
     return Contact(
-      id: json['id'] as String? ?? json['user_id'] as String? ?? '',
-      userId: json['user_id'] as String?,
-      displayName: json['display_name'] as String? ?? json['name'] as String? ?? 'Inconnu',
-      phoneNumber: json['phone_number'] as String? ?? json['phone'] as String? ?? '',
+      id: rawId,
+      userId: json['user_id'] as String? ?? rawId,
+      displayName: rawName.isNotEmpty ? rawName : (phone.isNotEmpty ? phone : 'Utilisateur MÏÏghO'),
+      phoneNumber: phone,
       avatarUrl: json['avatar_url'] as String?,
-      bio: json['bio'] as String?,
-      isMiighoUser: json['is_miigho_user'] as bool? ?? (json['user_id'] != null),
+      bio: json['status_message'] as String? ?? json['bio'] as String?,
+      isMiighoUser: json['is_miigho_user'] as bool? ?? (rawId.isNotEmpty),
       isFavorite: json['is_favorite'] as bool? ?? false,
       isBlocked: json['is_blocked'] as bool? ?? false,
       isOnline: json['is_online'] as bool? ?? false,

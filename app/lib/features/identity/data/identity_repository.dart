@@ -76,7 +76,7 @@ class IdentityRepository {
   UserProfile _cachedProfile = UserProfile(
     id: '',
     miighoId: '@miigho',
-    displayName: 'Membre MÏÏghO',
+    displayName: 'Nom à définir',
     phoneNumber: '',
     email: '',
     bio: '',
@@ -108,13 +108,16 @@ class IdentityRepository {
         final phone = d['phone_number'] as String? ?? storedPhone;
         final id = d['id'] as String? ?? storedUserId;
 
-        final displayName = fullName.isNotEmpty
-            ? fullName
-            : (phone.isNotEmpty ? phone : 'Membre MÏÏghO');
+        // Display Name: Real user name, or explicit placeholder
+        final displayName = fullName.isNotEmpty ? fullName : 'Nom à définir';
 
-        final miighoId = phone.isNotEmpty
-            ? '@${phone.replaceAll('+', '')}'
-            : (id.isNotEmpty ? 'MG-${id.substring(0, 8).toUpperCase()}' : '@miigho');
+        // MÏÏghO ID: Canonical backend value if present, otherwise derived from UUID (@MG-XXXXXXXX)
+        final rawMiighoId = (d['miigho_id'] as String?)?.trim() ?? '';
+        final miighoId = rawMiighoId.isNotEmpty
+            ? (rawMiighoId.startsWith('@') ? rawMiighoId : '@$rawMiighoId')
+            : (id.isNotEmpty
+                ? '@MG-${id.substring(0, id.length >= 8 ? 8 : id.length).toUpperCase()}'
+                : '@miigho');
 
         _cachedProfile = UserProfile(
           id: id,
@@ -137,10 +140,14 @@ class IdentityRepository {
       return _cachedProfile;
     } catch (_) {
       if (storedPhone.isNotEmpty || storedUserId.isNotEmpty) {
+        final miighoId = storedUserId.isNotEmpty
+            ? '@MG-${storedUserId.substring(0, storedUserId.length >= 8 ? 8 : storedUserId.length).toUpperCase()}'
+            : '@miigho';
+
         _cachedProfile = UserProfile(
           id: storedUserId,
-          miighoId: storedPhone.isNotEmpty ? '@${storedPhone.replaceAll('+', '')}' : '@miigho',
-          displayName: storedPhone.isNotEmpty ? storedPhone : 'Membre MÏÏghO',
+          miighoId: miighoId,
+          displayName: 'Nom à définir',
           phoneNumber: storedPhone,
           email: '',
           bio: '',

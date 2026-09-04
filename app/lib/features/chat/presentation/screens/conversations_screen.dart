@@ -240,10 +240,66 @@ class _ConversationsScreenState extends State<ConversationsScreen> {
 
                 if (filtered.isEmpty) {
                   return Center(
-                    child: Text(
-                      'Aucune discussion trouvée',
-                      style: TextStyle(
-                        color: isDark ? MiighoColors.textMuted : MiighoColors.lightTextMuted,
+                    child: Padding(
+                      padding: const EdgeInsets.symmetric(horizontal: 32.0),
+                      child: Column(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                          Container(
+                            width: 72,
+                            height: 72,
+                            decoration: BoxDecoration(
+                              color: MiighoColors.primary.withValues(alpha: isDark ? 0.12 : 0.08),
+                              shape: BoxShape.circle,
+                            ),
+                            child: Icon(
+                              Icons.forum_outlined,
+                              size: 32,
+                              color: MiighoColors.primary.withValues(alpha: 0.7),
+                            ),
+                          ),
+                          const SizedBox(height: 16),
+                          Text(
+                            _searchQuery.isNotEmpty
+                                ? 'Aucun résultat pour "$_searchQuery"'
+                                : 'Aucune discussion pour le moment',
+                            textAlign: TextAlign.center,
+                            style: TextStyle(
+                              fontSize: 16,
+                              fontWeight: FontWeight.w700,
+                              color: isDark ? MiighoColors.textPrimary : MiighoColors.lightTextPrimary,
+                            ),
+                          ),
+                          const SizedBox(height: 8),
+                          Text(
+                            _searchQuery.isNotEmpty
+                                ? 'Essayez un autre nom ou numéro,\nou recherchez un utilisateur MÏÏghO.'
+                                : 'Commencez par rechercher un contact\net envoyez votre premier message.',
+                            textAlign: TextAlign.center,
+                            style: TextStyle(
+                              fontSize: 13,
+                              color: isDark ? MiighoColors.textSecondary : MiighoColors.lightTextSecondary,
+                              height: 1.5,
+                            ),
+                          ),
+                          const SizedBox(height: 24),
+                          ElevatedButton.icon(
+                            onPressed: _openNewChat,
+                            style: ElevatedButton.styleFrom(
+                              backgroundColor: MiighoColors.primary,
+                              foregroundColor: Colors.white,
+                              padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
+                              shape: RoundedRectangleBorder(
+                                borderRadius: BorderRadius.circular(12),
+                              ),
+                            ),
+                            icon: const Icon(Icons.edit_rounded, size: 18),
+                            label: const Text(
+                              'Démarrer une nouvelle discussion',
+                              style: TextStyle(fontWeight: FontWeight.w700),
+                            ),
+                          ),
+                        ],
                       ),
                     ),
                   );
@@ -304,11 +360,11 @@ class _ConversationsScreenState extends State<ConversationsScreen> {
         ],
       ),
       ),
-      floatingActionButton: widget.isEmbedded
-          ? null
-          : FloatingActionButton(
+      floatingActionButton: FloatingActionButton(
+              mini: widget.isEmbedded,
               backgroundColor: MiighoColors.primary,
               onPressed: _openNewChat,
+              tooltip: 'Nouveau message',
               child: const Icon(Icons.edit_rounded, color: Colors.white),
             ),
     );

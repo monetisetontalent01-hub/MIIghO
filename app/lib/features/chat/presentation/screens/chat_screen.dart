@@ -28,16 +28,25 @@ class _ChatScreenState extends State<ChatScreen> {
   MessageReplyData? _replyData;
   bool _showContactInfo = false;
 
+  /// Simple UUID format check to prevent invalid API calls
+  static bool _isValidUuid(String id) {
+    return RegExp(
+      r'^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$',
+    ).hasMatch(id);
+  }
+
   @override
   void initState() {
     super.initState();
-    context.read<ChatBloc>().add(LoadMessages(widget.conversationId));
+    if (_isValidUuid(widget.conversationId)) {
+      context.read<ChatBloc>().add(LoadMessages(widget.conversationId));
+    }
   }
 
   @override
   void didUpdateWidget(covariant ChatScreen oldWidget) {
     super.didUpdateWidget(oldWidget);
-    if (oldWidget.conversationId != widget.conversationId) {
+    if (oldWidget.conversationId != widget.conversationId && _isValidUuid(widget.conversationId)) {
       context.read<ChatBloc>().add(LoadMessages(widget.conversationId));
     }
   }
@@ -114,7 +123,7 @@ class _ChatScreenState extends State<ChatScreen> {
               ),
               boxShadow: [
                 BoxShadow(
-                  color: Colors.black.withOpacity(0.15),
+                  color: Colors.black.withValues(alpha: 0.15),
                   blurRadius: 16,
                   offset: const Offset(0, 4),
                 ),

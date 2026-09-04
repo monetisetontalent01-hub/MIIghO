@@ -32,12 +32,14 @@ class _HomeScreenState extends State<HomeScreen> {
 
     return BlocBuilder<IdentityBloc, IdentityState>(
       builder: (context, identityState) {
-        String displayName = 'Membre MÏÏghO';
+        String displayName = 'Nom à définir';
+        String phoneNumber = '';
         String miighoId = '@miigho';
         String kycLevel = 'Niveau 1 (Actif)';
 
         if (identityState is IdentityLoaded) {
           displayName = identityState.profile.displayName;
+          phoneNumber = identityState.profile.phoneNumber;
           miighoId = identityState.profile.miighoId;
           kycLevel = identityState.profile.kycLevel;
         }
@@ -139,18 +141,39 @@ class _HomeScreenState extends State<HomeScreen> {
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
                         Text(
-                          '${strings.greeting}, ${displayName.split(' ').first}',
+                          '${strings.greeting}, $displayName',
                           style: TextStyle(
                             fontFamily: 'Outfit',
-                            fontSize: isWide ? 28 : 22,
+                            fontSize: isWide ? 26 : 20,
                             fontWeight: FontWeight.w800,
                             color: isDark ? MiighoColors.textPrimary : MiighoColors.lightTextPrimary,
                             letterSpacing: -0.4,
                           ),
                         ),
-                        const SizedBox(height: 4),
-                        Row(
+                        const SizedBox(height: 6),
+                        Wrap(
+                          spacing: 8,
+                          runSpacing: 4,
+                          crossAxisAlignment: WrapCrossAlignment.center,
                           children: [
+                            if (phoneNumber.isNotEmpty) ...[
+                              Container(
+                                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                                decoration: BoxDecoration(
+                                  color: (isDark ? Colors.white : Colors.black).withValues(alpha: 0.06),
+                                  borderRadius: BorderRadius.circular(6),
+                                ),
+                                child: Text(
+                                  phoneNumber,
+                                  style: TextStyle(
+                                    fontSize: 12,
+                                    fontWeight: FontWeight.w600,
+                                    color: isDark ? MiighoColors.textPrimary : MiighoColors.lightTextPrimary,
+                                  ),
+                                ),
+                              ),
+                              const Text('•', style: TextStyle(color: Colors.grey)),
+                            ],
                             Text(
                               miighoId,
                               style: const TextStyle(
@@ -159,9 +182,7 @@ class _HomeScreenState extends State<HomeScreen> {
                                 color: MiighoColors.gold,
                               ),
                             ),
-                            const SizedBox(width: 8),
                             const Text('•', style: TextStyle(color: Colors.grey)),
-                            const SizedBox(width: 8),
                             Text(
                               kycLevel,
                               style: TextStyle(
