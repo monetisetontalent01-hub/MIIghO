@@ -102,6 +102,10 @@ func (h *ChatHandler) createConversation(c echo.Context) error {
 
 		conv, err := h.service.CreateGroupConversation(c.Request().Context(), userIdent.ID, groupName, memberUUIDs)
 		if err != nil {
+			var appErr *common.AppError
+			if errors.As(err, &appErr) {
+				return appErr
+			}
 			return common.ErrInternal
 		}
 		return common.CreatedResponse(c, conv)
@@ -119,6 +123,10 @@ func (h *ChatHandler) createConversation(c echo.Context) error {
 
 	conv, err := h.service.CreateDirectConversation(c.Request().Context(), userIdent.ID, recipientID)
 	if err != nil {
+		var appErr *common.AppError
+		if errors.As(err, &appErr) {
+			return appErr
+		}
 		return common.ErrInternal
 	}
 

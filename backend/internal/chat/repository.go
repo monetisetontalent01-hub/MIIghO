@@ -75,9 +75,8 @@ func (r *PostgresChatRepository) ListConversations(ctx context.Context, userID u
 			c.type, 
 			CASE 
 				WHEN c.type = 'direct' THEN COALESCE(
-					NULLIF(u_other.display_name, ''),
 					NULLIF(TRIM(CONCAT(u_other.first_name, ' ', u_other.last_name)), ''),
-					'Utilisateur MÏÏghO'
+					'Nom à définir'
 				)
 				ELSE COALESCE(c.name, 'Groupe')
 			END AS conv_name,
