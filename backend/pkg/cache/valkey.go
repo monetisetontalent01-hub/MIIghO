@@ -73,12 +73,23 @@ func (v *ValkeyClient) GetPresence(ctx context.Context, userID string) (string, 
 }
 
 // IncrementRateLimit increments the rate limit counter and sets the expiration if it's a new key.
+// Uses an atomic Lua script to ensure EXPIRE is set only once (when count == 1),
+// preventing rolling window extension on subsequent requests.
 func (v *ValkeyClient) IncrementRateLimit(ctx context.Context, key string, window time.Duration) (int64, error) {
-	pipe := v.client.TxPipeline()
-	incr := pipe.Incr(ctx, key)
-	pipe.Expire(ctx, key, window)
-	if _, err := pipe.Exec(ctx); err != nil {
+	script := `
+		local current = redis.call('INCR', KEYS[1])
+		if current == 1 then
+			redis.call('EXPIRE', KEYS[1], ARGV[1])
+		end
+		return current
+	`
+	ttlSeconds := int(window.Seconds())
+	if ttlSeconds <= 0 {
+		ttlSeconds = 60
+	}
+	res, err := v.client.Eval(ctx, script, []string{key}, ttlSeconds).Int64()
+	if err != nil {
 		return 0, err
 	}
-	return incr.Val(), nil
+	return res, nil
 }

@@ -133,8 +133,9 @@ class _MessageBubbleState extends State<MessageBubble> {
     if (widget.timeString != null && widget.timeString!.isNotEmpty) {
       return widget.timeString!;
     }
-    final hour = widget.timestamp.hour.toString().padLeft(2, '0');
-    final minute = widget.timestamp.minute.toString().padLeft(2, '0');
+    final localTime = widget.timestamp.toLocal();
+    final hour = localTime.hour.toString().padLeft(2, '0');
+    final minute = localTime.minute.toString().padLeft(2, '0');
     return '$hour:$minute';
   }
 
@@ -426,7 +427,7 @@ class _MessageBubbleState extends State<MessageBubble> {
         ? Colors.white
         : (isDark ? MiighoColors.textDark : MiighoColors.textLight);
 
-    return SelectableText(
+    return Text(
       widget.content,
       style: TextStyle(
         color: textColor,

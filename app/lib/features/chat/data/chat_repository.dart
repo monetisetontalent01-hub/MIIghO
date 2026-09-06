@@ -26,6 +26,11 @@ class ChatRepository {
     }
   }
 
+  /// Disconnects WebSocket on logout or session clear.
+  void disconnectWebSocket() {
+    wsClient.disconnect();
+  }
+
   /// Retrieves list of user's active conversations from the backend server.
   Future<List<MiighoConversation>> getConversations() async {
     final response = await apiClient.get('/chat/conversations');

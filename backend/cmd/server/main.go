@@ -151,7 +151,7 @@ func main() {
 
 	// Security Middlewares
 	authMiddleware := middleware.AuthMiddleware(valkeyClient, pgPool, cfg.Server.Mode)
-	rateLimitMiddleware := middleware.RateLimitMiddleware(valkeyClient, 100, time.Minute)
+	rateLimitMiddleware := middleware.RateLimitMiddleware(valkeyClient, pgPool, cfg.Server.Mode, 100, time.Minute)
 
 	// Liveness check: verifies process is alive (instantaneous, 0 dependencies)
 	e.GET("/health", func(c echo.Context) error {

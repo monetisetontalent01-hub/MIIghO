@@ -20,10 +20,13 @@ class WsClient {
 
   String? _currentToken;
 
+  bool get isConnected => _channel != null && !_isExplicitlyDisconnected;
+
   WsClient(this.wsUrl);
 
   void connectWithToken(String token) {
     _currentToken = token;
+    _isExplicitlyDisconnected = false;
     connect();
   }
 
@@ -32,15 +35,28 @@ class WsClient {
   }
 
   void connect() {
+    if (_currentToken == null || _currentToken!.isEmpty) {
+      // Don't connect without a token — prevents 401 loop on welcome/unauthenticated screens
+      _stateController.add('disconnected');
+      return;
+    }
     _isExplicitlyDisconnected = false;
     _reconnectTimer?.cancel();
+    _reconnectTimer = null;
+
+    // Ensure strictly ONE connection: close any existing channel before opening a new one
+    if (_channel != null) {
+      try {
+        _channel?.sink.close();
+      } catch (_) {}
+      _channel = null;
+    }
+
     _stateController.add('connecting');
     try {
-      final uri = _currentToken != null && _currentToken!.isNotEmpty
-          ? (wsUrl.contains('?')
-              ? Uri.parse('$wsUrl&token=$_currentToken')
-              : Uri.parse('$wsUrl?token=$_currentToken'))
-          : Uri.parse(wsUrl);
+      final uri = wsUrl.contains('?')
+          ? Uri.parse('$wsUrl&token=$_currentToken')
+          : Uri.parse('$wsUrl?token=$_currentToken');
       _channel = WebSocketChannel.connect(uri);
       _stateController.add('connected');
       _reconnectDelaySeconds = 1; // Reset backoff on successful connect
@@ -80,10 +96,13 @@ class WsClient {
   }
 
   void _scheduleReconnect() {
+    if (_isExplicitlyDisconnected || _currentToken == null || _currentToken!.isEmpty) {
+      return;
+    }
     _stateController.add('reconnecting');
     _reconnectTimer?.cancel();
     _reconnectTimer = Timer(Duration(seconds: _reconnectDelaySeconds), () {
-      if (!_isExplicitlyDisconnected) {
+      if (!_isExplicitlyDisconnected && _currentToken != null && _currentToken!.isNotEmpty) {
         _reconnectDelaySeconds = (_reconnectDelaySeconds * 2).clamp(1, _maxReconnectDelay);
         connect();
       }
@@ -113,7 +132,11 @@ class WsClient {
   void disconnect() {
     _isExplicitlyDisconnected = true;
     _reconnectTimer?.cancel();
-    _channel?.sink.close();
+    _reconnectTimer = null;
+    _currentToken = null;
+    try {
+      _channel?.sink.close();
+    } catch (_) {}
     _channel = null;
     _stateController.add('disconnected');
   }

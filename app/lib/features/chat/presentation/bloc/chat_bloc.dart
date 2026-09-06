@@ -9,6 +9,7 @@ import 'package:miigho/shared/widgets/conversation_tile.dart' show MessageDelive
 abstract class ChatEvent {}
 
 class LoadConversations extends ChatEvent {}
+class ResetChatStateEvent extends ChatEvent {}
 
 class LoadMessages extends ChatEvent {
   final String conversationId;
@@ -221,6 +222,7 @@ class ChatBloc extends Bloc<ChatEvent, ChatState> {
     on<MarkConversationReadEvent>(_onMarkConversationRead);
     on<SendTypingEvent>(_onSendTyping);
     on<WsEnvelopeReceivedEvent>(_onWsEnvelopeReceived);
+    on<ResetChatStateEvent>(_onResetChatState);
 
     // Automatically connect WebSocket with user session
     chatRepository.connectWebSocket();
@@ -232,21 +234,89 @@ class ChatBloc extends Bloc<ChatEvent, ChatState> {
     });
   }
 
+  void _onResetChatState(ResetChatStateEvent event, Emitter<ChatState> emit) {
+    _allConversations.clear();
+    emit(ChatInitial());
+  }
+
+  String _formatErrorMessage(dynamic error, String fallback) {
+    final errStr = error.toString().toLowerCase();
+    if (errStr.contains('429')) {
+      return 'Service temporairement limité. Veuillez patienter quelques instants.';
+    }
+    if (errStr.contains('403')) {
+      return 'Action non autorisée (vous devez être en contact).';
+    }
+    return '$fallback: $error';
+  }
+
+  /// Centralized sorting, deduplication, and reconciliation of messages.
+  /// - Deduplicates by server ID and by clientMessageId.
+  /// - Replaces optimistic message with server message (including canonical server timestamp).
+  /// - Deterministically sorts messages by UTC timestamp descending (newest first for reverse: true).
+  /// - If UTC timestamps are identical, tie-breaks deterministically using message ID.
+  List<MiighoMessageItem> _sortAndDeduplicate(List<MiighoMessageItem> messages) {
+    final Map<String, MiighoMessageItem> map = {};
+
+    for (final msg in messages) {
+      String? cmidKey;
+      if (msg.clientMessageId != null && msg.clientMessageId!.isNotEmpty) {
+        cmidKey = 'cmid_${msg.clientMessageId}';
+      }
+      final idKey = 'id_${msg.id}';
+
+      String targetKey = cmidKey ?? idKey;
+      MiighoMessageItem? existing = cmidKey != null ? map[cmidKey] : null;
+      existing ??= map[idKey];
+
+      if (existing != null) {
+        final isServerConfirmed = msg.status != MessageDeliveryStatus.sending;
+        final wasServerConfirmed = existing.status != MessageDeliveryStatus.sending;
+
+        if (isServerConfirmed && !wasServerConfirmed) {
+          map.remove('id_${existing.id}');
+          if (existing.clientMessageId != null && existing.clientMessageId!.isNotEmpty) {
+            map.remove('cmid_${existing.clientMessageId}');
+          }
+          map[targetKey] = msg;
+        } else if (!isServerConfirmed && wasServerConfirmed) {
+          // Keep existing server-confirmed message
+        } else {
+          map[targetKey] = msg.reactions.isNotEmpty ? msg : existing;
+        }
+      } else {
+        map[targetKey] = msg;
+      }
+    }
+
+    final list = map.values.toList();
+    list.sort((a, b) {
+      final cmp = b.timestamp.toUtc().compareTo(a.timestamp.toUtc());
+      if (cmp != 0) return cmp;
+      return b.id.compareTo(a.id);
+    });
+
+    return list;
+  }
+
   Future<void> _onLoadConversations(LoadConversations event, Emitter<ChatState> emit) async {
-    emit(ChatLoading());
+    if (_allConversations.isEmpty) {
+      emit(ChatLoading());
+    }
     try {
       final conversations = await chatRepository.getConversations();
       _allConversations = List.from(conversations);
       emit(ConversationsLoaded(_allConversations));
     } catch (e) {
-      emit(ChatError('Impossible de charger les conversations: $e'));
+      emit(ChatError(_formatErrorMessage(e, 'Impossible de charger les conversations')));
     }
   }
 
   Future<void> _onLoadMessages(LoadMessages event, Emitter<ChatState> emit) async {
     emit(ChatLoading());
     try {
-      final messages = await chatRepository.getMessages(event.conversationId);
+      final rawMessages = await chatRepository.getMessages(event.conversationId);
+      final messages = _sortAndDeduplicate(rawMessages);
       MiighoConversation? conv;
       final existingIdx = _allConversations.indexWhere((c) => c.id == event.conversationId);
       if (existingIdx != -1) {
@@ -260,7 +330,7 @@ class ChatBloc extends Bloc<ChatEvent, ChatState> {
         conversation: conv,
       ));
     } catch (e) {
-      emit(ChatError('Impossible de charger les messages: $e'));
+      emit(ChatError(_formatErrorMessage(e, 'Impossible de charger les messages')));
     }
   }
 
@@ -281,7 +351,7 @@ class ChatBloc extends Bloc<ChatEvent, ChatState> {
 
     final currentState = state;
     if (currentState is MessagesLoaded && currentState.conversationId == event.conversationId) {
-      emit(currentState.copyWith(messages: [optimisticMessage, ...currentState.messages]));
+      emit(currentState.copyWith(messages: _sortAndDeduplicate([optimisticMessage, ...currentState.messages])));
     } else {
       emit(MessagesLoaded(
         conversationId: event.conversationId,
@@ -300,19 +370,7 @@ class ChatBloc extends Bloc<ChatEvent, ChatState> {
 
       final latestState = state;
       if (latestState is MessagesLoaded && latestState.conversationId == event.conversationId) {
-        final alreadyHasServerMsg = latestState.messages.any((m) => m.id == serverConfirmed.id);
-        List<MiighoMessageItem> updatedList;
-        if (alreadyHasServerMsg) {
-          // WebSocket already reconciled or delivered server message, remove temporary
-          updatedList = latestState.messages.where((m) => m.id != tempId && m.clientMessageId != clientMessageId).toList();
-        } else {
-          updatedList = latestState.messages.map((m) {
-            return (m.id == tempId || (m.clientMessageId != null && m.clientMessageId == clientMessageId))
-                ? serverConfirmed
-                : m;
-          }).toList();
-        }
-        emit(latestState.copyWith(messages: updatedList));
+        emit(latestState.copyWith(messages: _sortAndDeduplicate([serverConfirmed, ...latestState.messages])));
       }
 
       // Update conversation subtitle in conversation list
@@ -320,7 +378,7 @@ class ChatBloc extends Bloc<ChatEvent, ChatState> {
       if (idx != -1) {
         final updated = _allConversations[idx].copyWith(
           subtitle: event.content,
-          updatedAt: DateTime.now(),
+          updatedAt: serverConfirmed.timestamp,
           isLastMessageFromMe: true,
           lastMessageStatus: MessageDeliveryStatus.sent,
         );
@@ -611,25 +669,7 @@ class ChatBloc extends Bloc<ChatEvent, ChatState> {
 
           final currentState = state;
           if (currentState is MessagesLoaded && currentState.conversationId == convId) {
-            final alreadyHasServerMsg = currentState.messages.any((m) => m.id == newMsg.id);
-            if (!alreadyHasServerMsg) {
-              final hasMatchingTemp = newMsg.clientMessageId != null &&
-                  currentState.messages.any((m) =>
-                      m.clientMessageId == newMsg.clientMessageId || m.id == newMsg.clientMessageId);
-
-              if (hasMatchingTemp) {
-                // Reconcile temporary optimistic message with server message
-                final updated = currentState.messages.map((m) {
-                  if (m.clientMessageId == newMsg.clientMessageId || m.id == newMsg.clientMessageId) {
-                    return newMsg;
-                  }
-                  return m;
-                }).toList();
-                emit(currentState.copyWith(messages: updated));
-              } else {
-                emit(currentState.copyWith(messages: [newMsg, ...currentState.messages]));
-              }
-            }
+            emit(currentState.copyWith(messages: _sortAndDeduplicate([newMsg, ...currentState.messages])));
           }
 
           // Update conversations list

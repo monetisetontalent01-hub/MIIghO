@@ -472,7 +472,11 @@ class _ChatScreenState extends State<ChatScreen> {
                           itemCount: messages.length,
                           itemBuilder: (context, index) {
                             final msg = messages[index];
+                            final stableKey = msg.clientMessageId?.isNotEmpty == true
+                                ? msg.clientMessageId!
+                                : msg.id;
                             return MessageBubble(
+                              key: ValueKey(stableKey),
                               id: msg.id,
                               content: msg.content,
                               isMe: msg.isMe,
