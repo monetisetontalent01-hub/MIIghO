@@ -7,7 +7,6 @@ import '../../../../shared/widgets/miigho_avatar.dart';
 import '../../../contacts/presentation/bloc/contacts_bloc.dart';
 import '../../../contacts/models/contact_model.dart';
 import '../bloc/chat_bloc.dart';
-import '../../models/chat_models.dart';
 import 'new_chat_dialog.dart';
 import 'create_group_dialog.dart';
 
@@ -357,7 +356,7 @@ class _ConversationsScreenState extends State<ConversationsScreen> {
                   return const Center(child: CircularProgressIndicator());
                 }
 
-                if (state is ChatError) {
+                if (state is ChatError && state.conversations.isEmpty) {
                   return Center(
                     child: Padding(
                       padding: const EdgeInsets.all(24.0),
@@ -386,10 +385,8 @@ class _ConversationsScreenState extends State<ConversationsScreen> {
                   );
                 }
 
-                List<MiighoConversation> conversations = [];
-                if (state is ConversationsLoaded) {
-                  conversations = state.conversations;
-                }
+                // Conversations are always available from composite state
+                final conversations = state.conversations;
 
                 // Filtrage selon recherche & chips
                 final filtered = conversations.where((c) {

@@ -300,41 +300,39 @@ class _ChatScreenState extends State<ChatScreen> {
         bool isTyping = false;
         List<MiighoMessageItem> messages = [];
 
-        if (state is MessagesLoaded && state.conversationId == widget.conversationId) {
-          messages = state.messages;
-          isTyping = state.isPeerTyping;
-          if (state.conversation != null) {
-            contactTitle = state.conversation!.title.isNotEmpty
-                ? state.conversation!.title
-                : 'Utilisateur MÏÏghO';
-            isGroup = state.conversation!.isGroup;
-            isOnline = state.conversation!.isOnline;
-          }
-          // Trigger read receipt on load
-          if (messages.isNotEmpty && !messages.first.isMe) {
-            context.read<ChatBloc>().add(
-                  MarkConversationReadEvent(
-                    conversationId: widget.conversationId,
-                    messageId: messages.first.id,
-                  ),
-                );
-          }
-        }
-
-        // Find metadata from conversations list if available
         if (state is ConversationsLoaded) {
-          final conv = state.conversations.firstWhere(
-            (c) => c.id == widget.conversationId,
-            orElse: () => MiighoConversation(
-              id: widget.conversationId,
-              title: 'Discussion',
-              subtitle: '',
-              updatedAt: DateTime.now(),
-            ),
+          // Get conversation metadata from conversations list (always available)
+          final convFromList = state.conversations.cast<MiighoConversation?>().firstWhere(
+            (c) => c!.id == widget.conversationId,
+            orElse: () => null,
           );
-          contactTitle = conv.title.isNotEmpty ? conv.title : 'Utilisateur MÏÏghO';
-          isGroup = conv.isGroup;
-          isOnline = conv.isOnline;
+          if (convFromList != null) {
+            contactTitle = convFromList.title.isNotEmpty ? convFromList.title : 'Utilisateur MÏÏghO';
+            isGroup = convFromList.isGroup;
+            isOnline = convFromList.isOnline;
+          }
+
+          // Get messages if this is the active conversation
+          if (state.activeConversationId == widget.conversationId) {
+            messages = state.messages;
+            isTyping = state.isPeerTyping;
+            if (state.activeConversation != null) {
+              contactTitle = state.activeConversation!.title.isNotEmpty
+                  ? state.activeConversation!.title
+                  : contactTitle;
+              isGroup = state.activeConversation!.isGroup;
+              isOnline = state.activeConversation!.isOnline;
+            }
+            // Trigger read receipt on load
+            if (messages.isNotEmpty && !messages.first.isMe) {
+              context.read<ChatBloc>().add(
+                    MarkConversationReadEvent(
+                      conversationId: widget.conversationId,
+                      messageId: messages.first.id,
+                    ),
+                  );
+            }
+          }
         }
 
         Widget chatContent = Scaffold(
@@ -546,6 +544,7 @@ class _ChatScreenState extends State<ChatScreen> {
                 title: contactTitle,
                 isGroup: isGroup,
                 isOnline: isOnline,
+                conversationId: widget.conversationId,
               ),
             ],
           );

@@ -65,8 +65,8 @@ func (m *mockContactRepo) GetContactRequest(ctx context.Context, id uuid.UUID) (
 	return nil, nil
 }
 
-func (m *mockContactRepo) AcceptContactRequest(ctx context.Context, requestID, recipientID uuid.UUID) error {
-	return nil
+func (m *mockContactRepo) AcceptContactRequest(ctx context.Context, requestID, recipientID uuid.UUID) (uuid.UUID, error) {
+	return uuid.New(), nil
 }
 
 func (m *mockContactRepo) RejectContactRequest(ctx context.Context, requestID, recipientID uuid.UUID) error {

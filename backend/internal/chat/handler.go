@@ -25,6 +25,7 @@ func (h *ChatHandler) RegisterRoutes(g *echo.Group, authMiddleware echo.Middlewa
 	chatGroup.GET("/conversations", h.listConversations)
 	chatGroup.POST("/conversations", h.createConversation)
 	chatGroup.GET("/conversations/:id", h.getConversation)
+	chatGroup.GET("/conversations/:id/members", h.getConversationMembers)
 	chatGroup.GET("/conversations/:id/messages", h.getMessages)
 	chatGroup.POST("/conversations/:id/messages", h.sendMessage)
 	chatGroup.POST("/conversations/:id/read", h.markRead)
@@ -57,6 +58,29 @@ func (h *ChatHandler) getConversation(c echo.Context) error {
 	}
 
 	return common.SuccessResponse(c, conv)
+}
+
+// getConversationMembers returns the verified members of a conversation.
+func (h *ChatHandler) getConversationMembers(c echo.Context) error {
+	userIdent, err := identity.GetUserIdentity(c)
+	if err != nil {
+		return common.ErrUnauthorized
+	}
+
+	convID, err := uuid.Parse(c.Param("id"))
+	if err != nil {
+		return common.ErrBadRequest
+	}
+
+	members, err := h.service.GetConversationMembers(c.Request().Context(), convID, userIdent.ID)
+	if err != nil {
+		if errors.Is(err, common.ErrForbidden) {
+			return common.ErrForbidden
+		}
+		return common.ErrInternal
+	}
+
+	return common.SuccessResponse(c, members)
 }
 
 // listConversations returns paginated conversations for the authenticated user.

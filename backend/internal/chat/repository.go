@@ -3,6 +3,7 @@ package chat
 import (
 	"context"
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/google/uuid"
@@ -15,6 +16,7 @@ type ChatRepository interface {
 	GetConversation(ctx context.Context, id uuid.UUID) (*Conversation, error)
 	IsMember(ctx context.Context, conversationID, userID uuid.UUID) (bool, error)
 	GetConversationMembers(ctx context.Context, conversationID uuid.UUID) ([]uuid.UUID, error)
+	GetConversationMemberDetails(ctx context.Context, conversationID uuid.UUID) ([]ConversationMemberDetail, error)
 	FindExistingDirectConversation(ctx context.Context, userA, userB uuid.UUID) (*Conversation, error)
 	CreateDirectConversation(ctx context.Context, userA, userB uuid.UUID) (*Conversation, error)
 	CreateGroupConversation(ctx context.Context, creatorID uuid.UUID, name string, memberIDs []uuid.UUID) (*Conversation, error)
@@ -60,6 +62,47 @@ func (r *PostgresChatRepository) GetConversationMembers(ctx context.Context, con
 			return nil, err
 		}
 		members = append(members, uid)
+	}
+	return members, nil
+}
+
+func formatMiighoID(id uuid.UUID) string {
+	short := strings.ToUpper(strings.ReplaceAll(id.String(), "-", "")[:8])
+	return fmt.Sprintf("@MG-%s", short)
+}
+
+func (r *PostgresChatRepository) GetConversationMemberDetails(ctx context.Context, conversationID uuid.UUID) ([]ConversationMemberDetail, error) {
+	query := `
+		SELECT cm.user_id,
+		       COALESCE(u.first_name, ''),
+		       COALESCE(u.last_name, ''),
+		       COALESCE(u.avatar_url, ''),
+		       COALESCE(cm.role, 'member'),
+		       cm.joined_at
+		FROM conversation_members cm
+		JOIN users u ON u.id = cm.user_id AND u.deleted_at IS NULL
+		WHERE cm.conversation_id = $1
+		ORDER BY cm.joined_at ASC
+	`
+	rows, err := r.pool.Query(ctx, query, conversationID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var members []ConversationMemberDetail
+	for rows.Next() {
+		var m ConversationMemberDetail
+		var avatar string
+		if err := rows.Scan(&m.UserID, &m.FirstName, &m.LastName, &avatar, &m.Role, &m.JoinedAt); err != nil {
+			return nil, err
+		}
+		m.AvatarURL = avatar
+		m.MiighoID = formatMiighoID(m.UserID)
+		members = append(members, m)
+	}
+	if members == nil {
+		members = []ConversationMemberDetail{}
 	}
 	return members, nil
 }

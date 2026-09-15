@@ -1,5 +1,7 @@
+import 'dart:async';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:equatable/equatable.dart';
+import '../../../../core/network/ws_client.dart';
 import '../../data/contacts_repository.dart';
 import '../../models/contact_model.dart';
 
@@ -16,7 +18,20 @@ abstract class ContactsEvent extends Equatable {
 
 /// Initial load of contacts from local store/backend
 class LoadContacts extends ContactsEvent {
-  const LoadContacts();
+  final bool forceRefresh;
+  const LoadContacts({this.forceRefresh = false});
+
+  @override
+  List<Object?> get props => [forceRefresh];
+}
+
+/// Real-time contact event received via WebSocket
+class ContactWsEnvelopeReceived extends ContactsEvent {
+  final Map<String, dynamic> envelope;
+  const ContactWsEnvelopeReceived(this.envelope);
+
+  @override
+  List<Object?> get props => [envelope];
 }
 
 /// Trigger full network synchronization with backend
@@ -193,8 +208,9 @@ class ContactsError extends ContactsState {
 
 class ContactsBloc extends Bloc<ContactsEvent, ContactsState> {
   final ContactsRepository repository;
+  StreamSubscription? _wsSubscription;
 
-  ContactsBloc({required this.repository}) : super(ContactsInitial()) {
+  ContactsBloc({required this.repository, WsClient? wsClient}) : super(ContactsInitial()) {
     on<LoadContacts>(_onLoadContacts);
     on<SyncContacts>(_onSyncContacts);
     on<SearchContacts>(_onSearchContacts);
@@ -205,12 +221,32 @@ class ContactsBloc extends Bloc<ContactsEvent, ContactsState> {
     on<LoadContactRequestsEvent>(_onLoadContactRequests);
     on<AcceptContactRequestEvent>(_onAcceptContactRequest);
     on<RejectContactRequestEvent>(_onRejectContactRequest);
+    on<ContactWsEnvelopeReceived>(_onContactWsEnvelopeReceived);
+
+    if (wsClient != null) {
+      _wsSubscription = wsClient.messages.listen((msg) {
+        if (msg is Map<String, dynamic>) {
+          final type = msg['type'];
+          if (type == 'contact.accepted' ||
+              type == 'contact.request' ||
+              type == 'contact.rejected') {
+            add(ContactWsEnvelopeReceived(msg));
+          }
+        }
+      });
+    }
+  }
+
+  void _onContactWsEnvelopeReceived(ContactWsEnvelopeReceived event, Emitter<ContactsState> emit) {
+    add(const LoadContacts(forceRefresh: true));
   }
 
   Future<void> _onLoadContacts(LoadContacts event, Emitter<ContactsState> emit) async {
-    emit(ContactsLoading());
+    if (state is! ContactsLoaded) {
+      emit(ContactsLoading());
+    }
     try {
-      final contacts = await repository.fetchLocalContacts();
+      final contacts = await repository.fetchLocalContacts(forceRefresh: event.forceRefresh);
       final incoming = await repository.getIncomingRequests();
       final outgoing = await repository.getOutgoingRequests();
       _emitCategorizedContacts(
@@ -221,7 +257,9 @@ class ContactsBloc extends Bloc<ContactsEvent, ContactsState> {
         outgoingRequests: outgoing,
       );
     } catch (e) {
-      emit(ContactsError('Impossible de charger les contacts : ${e.toString()}'));
+      if (state is! ContactsLoaded) {
+        emit(ContactsError('Impossible de charger les contacts : ${e.toString()}'));
+      }
     }
   }
 
@@ -378,12 +416,12 @@ class ContactsBloc extends Bloc<ContactsEvent, ContactsState> {
 
   Future<void> _onAcceptContactRequest(AcceptContactRequestEvent event, Emitter<ContactsState> emit) async {
     await repository.acceptContactRequest(event.requestId);
-    add(const LoadContacts());
+    add(const LoadContacts(forceRefresh: true));
   }
 
   Future<void> _onRejectContactRequest(RejectContactRequestEvent event, Emitter<ContactsState> emit) async {
     await repository.rejectContactRequest(event.requestId);
-    add(const LoadContacts());
+    add(const LoadContacts(forceRefresh: true));
   }
 
   void _emitCategorizedContacts(
@@ -425,5 +463,11 @@ class ContactsBloc extends Bloc<ContactsEvent, ContactsState> {
       searchQuery: searchQuery,
       isSyncing: false,
     ));
+  }
+
+  @override
+  Future<void> close() {
+    _wsSubscription?.cancel();
+    return super.close();
   }
 }

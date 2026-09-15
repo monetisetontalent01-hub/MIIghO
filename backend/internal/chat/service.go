@@ -49,6 +49,17 @@ func (s *ChatService) GetConversation(ctx context.Context, convID, userID uuid.U
 	return s.repo.GetConversation(ctx, convID)
 }
 
+func (s *ChatService) GetConversationMembers(ctx context.Context, convID, userID uuid.UUID) ([]ConversationMemberDetail, error) {
+	isMember, err := s.repo.IsMember(ctx, convID, userID)
+	if err != nil {
+		return nil, err
+	}
+	if !isMember {
+		return nil, common.ErrForbidden
+	}
+	return s.repo.GetConversationMemberDetails(ctx, convID)
+}
+
 func (s *ChatService) CreateDirectConversation(ctx context.Context, userA, userB uuid.UUID) (*Conversation, error) {
 	// Authorization: verify users are mutual contacts
 	if s.contactService != nil {

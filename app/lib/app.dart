@@ -94,7 +94,10 @@ class _MiighoAppState extends State<MiighoApp> with WidgetsBindingObserver {
       secureStorage: widget.secureStorage,
       database: widget.database,
     );
-    _contactsBloc = ContactsBloc(repository: _contactsRepository);
+    _contactsBloc = ContactsBloc(
+      repository: _contactsRepository,
+      wsClient: widget.wsClient,
+    );
 
     _payRepository = PayRepository(
       apiClient: widget.apiClient,
@@ -125,8 +128,17 @@ class _MiighoAppState extends State<MiighoApp> with WidgetsBindingObserver {
   void didChangeAppLifecycleState(AppLifecycleState state) {
     if (state == AppLifecycleState.resumed) {
       // Upon returning from Safari iOS background/lock, verify WebSocket state
-      if (_authBloc.state is AuthAuthenticated && !widget.wsClient.isConnected) {
-        _chatRepository.connectWebSocket();
+      if (_authBloc.state is AuthAuthenticated) {
+        if (!widget.wsClient.isConnected) {
+          _chatRepository.connectWebSocket();
+        }
+        // Background data reconciliation to avoid stale states
+        _chatBloc.add(LoadConversations(isBackground: true));
+        final chatState = _chatBloc.state;
+        if (chatState is ConversationsLoaded && chatState.activeConversationId != null) {
+          _chatBloc.add(LoadMessages(chatState.activeConversationId!, isBackground: true));
+        }
+        _contactsBloc.add(const LoadContacts());
       }
     }
   }

@@ -248,9 +248,7 @@ class MiighoBottomNav extends StatelessWidget {
     final isDark = theme.brightness == Brightness.dark;
     final strings = MiighoStrings.of(context);
     final chatState = context.watch<ChatBloc>().state;
-    final unreadCount = chatState is ConversationsLoaded
-        ? chatState.conversations.fold<int>(0, (sum, c) => sum + c.unreadCount)
-        : 0;
+    final unreadCount = chatState.conversations.fold<int>(0, (sum, c) => sum + c.unreadCount);
 
     return Container(
       decoration: BoxDecoration(

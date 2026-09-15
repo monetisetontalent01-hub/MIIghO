@@ -26,9 +26,7 @@ class MiighoSidebar extends StatelessWidget {
     final isDark = theme.brightness == Brightness.dark;
     final strings = MiighoStrings.of(context);
     final chatState = context.watch<ChatBloc>().state;
-    final unreadCount = chatState is ConversationsLoaded
-        ? chatState.conversations.fold<int>(0, (sum, c) => sum + c.unreadCount)
-        : 0;
+    final unreadCount = chatState.conversations.fold<int>(0, (sum, c) => sum + c.unreadCount);
     final identityState = context.watch<IdentityBloc>().state;
     final userName = identityState is IdentityLoaded
         ? identityState.profile.displayName

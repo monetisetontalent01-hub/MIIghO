@@ -22,8 +22,8 @@ class ContactsRepository {
   List<Contact> get cachedContacts => List.unmodifiable(_cachedContacts);
 
   /// Fetch local address book contacts (loads remote synced contacts or local cache)
-  Future<List<Contact>> fetchLocalContacts() async {
-    if (_cachedContacts.isNotEmpty) {
+  Future<List<Contact>> fetchLocalContacts({bool forceRefresh = false}) async {
+    if (_cachedContacts.isNotEmpty && !forceRefresh) {
       return _cachedContacts;
     }
     return fetchRemoteContacts();

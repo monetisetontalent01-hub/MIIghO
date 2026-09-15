@@ -53,6 +53,20 @@ class ChatRepository {
     return null;
   }
 
+  /// Retrieves verified members of a conversation from the backend server.
+  Future<List<ConversationMemberDetail>> getConversationMembers(String conversationId) async {
+    try {
+      final response = await apiClient.get('/chat/conversations/$conversationId/members');
+      final data = response.data;
+      if (data is Map<String, dynamic> && data['data'] is List) {
+        return (data['data'] as List).map((m) {
+          return ConversationMemberDetail.fromJson(m as Map<String, dynamic>);
+        }).toList();
+      }
+    } catch (_) {}
+    return [];
+  }
+
   /// Retrieves paginated messages for a conversation from the backend server.
   Future<List<MiighoMessageItem>> getMessages(String conversationId) async {
     final response = await apiClient.get('/chat/conversations/$conversationId/messages');

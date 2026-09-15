@@ -5,15 +5,24 @@ import '../../models/chat_models.dart';
 import '../../presentation/widgets/message_bubble.dart' show MessageBubbleType, MessageReactionData;
 import 'package:miigho/shared/widgets/conversation_tile.dart' show MessageDeliveryStatus;
 
-// Events
+// ==========================================
+// EVENTS
+// ==========================================
 abstract class ChatEvent {}
 
-class LoadConversations extends ChatEvent {}
+class LoadConversations extends ChatEvent {
+  /// If true, this is a background refresh that should not show loading indicators.
+  final bool isBackground;
+  LoadConversations({this.isBackground = false});
+}
+
 class ResetChatStateEvent extends ChatEvent {}
 
 class LoadMessages extends ChatEvent {
   final String conversationId;
-  LoadMessages(this.conversationId);
+  /// If true, this is a background refresh (e.g., after WS reconnect).
+  final bool isBackground;
+  LoadMessages(this.conversationId, {this.isBackground = false});
 }
 
 class SendTextMessage extends ChatEvent {
@@ -138,74 +147,117 @@ class WsEnvelopeReceivedEvent extends ChatEvent {
   WsEnvelopeReceivedEvent(this.envelope);
 }
 
-// States
-abstract class ChatState {}
+/// Internal event triggered when WebSocket reconnects after disconnection.
+class _WsReconnectedEvent extends ChatEvent {}
 
+// ==========================================
+// STATES — Composite Architecture
+// ==========================================
+
+/// Base state class.
+abstract class ChatState {
+  /// Convenience: always returns conversations from state (empty if not loaded).
+  List<MiighoConversation> get conversations => const [];
+}
+
+/// Initial state before any data is loaded.
 class ChatInitial extends ChatState {}
 
+/// Loading indicator state — only used for initial load, never for background refreshes.
 class ChatLoading extends ChatState {}
 
+/// Error state preserves conversation data for resilient display.
+class ChatError extends ChatState {
+  final String message;
+  final List<MiighoConversation> _conversations;
+
+  ChatError(this.message, {List<MiighoConversation> conversations = const []})
+      : _conversations = conversations;
+
+  @override
+  List<MiighoConversation> get conversations => _conversations;
+}
+
+/// COMPOSITE STATE: Conversations are always preserved.
+/// When viewing the conversation list, `activeConversationId` is null and `messages` is empty.
+/// When viewing a chat, `activeConversationId` is set and `messages` are loaded.
+/// This eliminates the previous mutual-exclusion bug between ConversationsLoaded/MessagesLoaded.
 class ConversationsLoaded extends ChatState {
+  @override
   final List<MiighoConversation> conversations;
   final String? activeConversationId;
+  final List<MiighoMessageItem> messages;
+  final MiighoConversation? activeConversation;
+  final bool isPeerTyping;
+  final String? peerTypingName;
+  final bool isLoadingMessages;
 
-  ConversationsLoaded(this.conversations, {this.activeConversationId});
+  ConversationsLoaded(
+    this.conversations, {
+    this.activeConversationId,
+    this.messages = const [],
+    this.activeConversation,
+    this.isPeerTyping = false,
+    this.peerTypingName,
+    this.isLoadingMessages = false,
+  });
 
   ConversationsLoaded copyWith({
     List<MiighoConversation>? conversations,
     String? activeConversationId,
+    List<MiighoMessageItem>? messages,
+    MiighoConversation? activeConversation,
+    bool? isPeerTyping,
+    String? peerTypingName,
+    bool? isLoadingMessages,
+    bool clearActiveConversation = false,
   }) {
     return ConversationsLoaded(
       conversations ?? this.conversations,
       activeConversationId: activeConversationId ?? this.activeConversationId,
-    );
-  }
-}
-
-class MessagesLoaded extends ChatState {
-  final String conversationId;
-  final List<MiighoMessageItem> messages;
-  final MiighoConversation? conversation;
-  final bool isPeerTyping;
-  final String? peerTypingName;
-
-  MessagesLoaded({
-    required this.conversationId,
-    required this.messages,
-    this.conversation,
-    this.isPeerTyping = false,
-    this.peerTypingName,
-  });
-
-  MessagesLoaded copyWith({
-    String? conversationId,
-    List<MiighoMessageItem>? messages,
-    MiighoConversation? conversation,
-    bool? isPeerTyping,
-    String? peerTypingName,
-  }) {
-    return MessagesLoaded(
-      conversationId: conversationId ?? this.conversationId,
       messages: messages ?? this.messages,
-      conversation: conversation ?? this.conversation,
+      activeConversation: clearActiveConversation ? null : (activeConversation ?? this.activeConversation),
       isPeerTyping: isPeerTyping ?? this.isPeerTyping,
       peerTypingName: peerTypingName ?? this.peerTypingName,
+      isLoadingMessages: isLoadingMessages ?? this.isLoadingMessages,
     );
   }
+
+  /// Convenience getter — is there an active conversation being viewed?
+  bool get hasActiveConversation => activeConversationId != null;
 }
 
-class ChatError extends ChatState {
-  final String message;
-  ChatError(this.message);
-}
+/// Backward-compatibility alias — UI code checking `state is MessagesLoaded`
+/// will continue to work. This is a sub-view of ConversationsLoaded
+/// where an active conversation is set.
+/// NOTE: This is NOT a separate class. The check `state is MessagesLoaded`
+/// should be replaced with `state is ConversationsLoaded && state.hasActiveConversation`.
+/// For now, we use a typedef-style alias.
+typedef MessagesLoaded = ConversationsLoaded;
 
-// BLoC
+// ==========================================
+// BLOC
+// ==========================================
 class ChatBloc extends Bloc<ChatEvent, ChatState> {
   final ChatRepository chatRepository;
   StreamSubscription? _wsSubscription;
+  StreamSubscription? _wsStateSubscription;
+
+  /// Internal cache of conversations — always persisted across state transitions.
   List<MiighoConversation> _allConversations = [];
 
+  /// Track WebSocket connection transitions for reconnection detection (P0-1).
+  bool _wasConnected = false;
+  bool _wasDisconnectedAfterConnected = false;
+
+  /// Generation counters for REST race condition protection (P0-2).
+  int _conversationsGeneration = 0;
+  final Map<String, int> _messagesGenerations = {};
+
   ChatBloc({required this.chatRepository}) : super(ChatInitial()) {
+    _wasConnected = chatRepository.wsClient.isConnected;
+    _wasDisconnectedAfterConnected = false;
+
     on<LoadConversations>(_onLoadConversations);
     on<LoadMessages>(_onLoadMessages);
     on<SendTextMessage>(_onSendTextMessage);
@@ -223,20 +275,96 @@ class ChatBloc extends Bloc<ChatEvent, ChatState> {
     on<SendTypingEvent>(_onSendTyping);
     on<WsEnvelopeReceivedEvent>(_onWsEnvelopeReceived);
     on<ResetChatStateEvent>(_onResetChatState);
+    on<_WsReconnectedEvent>(_onWsReconnected);
 
-    // Automatically connect WebSocket with user session
-    chatRepository.connectWebSocket();
+    // ─── Phase 1: NO connectWebSocket() here ───
+    // app.dart is the sole authority for WebSocket lifecycle.
+    // We only subscribe to incoming WS messages here.
 
     _wsSubscription = chatRepository.wsClient.messages.listen((msg) {
       if (msg is Map<String, dynamic>) {
         add(WsEnvelopeReceivedEvent(msg));
       }
     });
+
+    // ─── P0-1: Listen to WebSocket connectionState with explicit state machine ───
+    _wsStateSubscription = chatRepository.wsClient.connectionState.listen((wsState) {
+      if (wsState == 'disconnected' || wsState == 'reconnecting') {
+        if (_wasConnected) {
+          _wasDisconnectedAfterConnected = true;
+        }
+      } else if (wsState == 'connected') {
+        if (_wasConnected && _wasDisconnectedAfterConnected) {
+          // Vraie transition : CONNECTED -> DISCONNECTED/RECONNECTING -> CONNECTED
+          _wasDisconnectedAfterConnected = false;
+          add(_WsReconnectedEvent());
+        } else if (!_wasConnected) {
+          // Première connexion initiale
+          _wasConnected = true;
+          _wasDisconnectedAfterConnected = false;
+        }
+        // Si _wasConnected && !_wasDisconnectedAfterConnected : CONNECTED redondant, ne rien faire.
+      }
+    });
   }
 
   void _onResetChatState(ResetChatStateEvent event, Emitter<ChatState> emit) {
     _allConversations.clear();
+    _wasConnected = false;
+    _wasDisconnectedAfterConnected = false;
+    _conversationsGeneration++;
+    _messagesGenerations.clear();
     emit(ChatInitial());
+  }
+
+  /// ─── Phase 4 & P0-2: Reconciliation after WS reconnection with generation tracking ───
+  Future<void> _onWsReconnected(_WsReconnectedEvent event, Emitter<ChatState> emit) async {
+    final convGen = ++_conversationsGeneration;
+    // Silently reload conversations in background
+    try {
+      final conversations = await chatRepository.getConversations();
+      if (convGen != _conversationsGeneration) return;
+      _allConversations = List.from(conversations);
+
+      final currentState = state;
+      if (currentState is ConversationsLoaded) {
+        // Preserve active conversation view, merge updated conversations
+        if (currentState.hasActiveConversation) {
+          final activeId = currentState.activeConversationId!;
+          final msgGen = (_messagesGenerations[activeId] ?? 0) + 1;
+          _messagesGenerations[activeId] = msgGen;
+
+          // Also reload messages for active conversation
+          try {
+            final rawMessages = await chatRepository.getMessages(activeId);
+            if (msgGen != _messagesGenerations[activeId]) return;
+            final latest = _currentCompositeState();
+            final currentMsgs = latest.activeConversationId == activeId ? latest.messages : const <MiighoMessageItem>[];
+            final messages = _sortAndDeduplicate([...rawMessages, ...currentMsgs]);
+
+            MiighoConversation? conv;
+            final idx = _allConversations.indexWhere((c) => c.id == activeId);
+            if (idx != -1) {
+              conv = _allConversations[idx];
+            }
+            emit(latest.copyWith(
+              conversations: List.from(_allConversations),
+              messages: messages,
+              activeConversation: conv,
+            ));
+          } catch (_) {
+            // At least update conversations
+            emit(currentState.copyWith(conversations: List.from(_allConversations)));
+          }
+        } else {
+          emit(currentState.copyWith(conversations: List.from(_allConversations)));
+        }
+      } else {
+        emit(ConversationsLoaded(List.from(_allConversations)));
+      }
+    } catch (_) {
+      // Silently fail — don't disrupt current UI
+    }
   }
 
   String _formatErrorMessage(dynamic error, String fallback) {
@@ -299,38 +427,95 @@ class ChatBloc extends Bloc<ChatEvent, ChatState> {
     return list;
   }
 
+  /// Helper: get the current composite state or create a new one preserving conversations.
+  ConversationsLoaded _currentCompositeState() {
+    final s = state;
+    if (s is ConversationsLoaded) return s;
+    return ConversationsLoaded(List.from(_allConversations));
+  }
+
   Future<void> _onLoadConversations(LoadConversations event, Emitter<ChatState> emit) async {
-    if (_allConversations.isEmpty) {
+    final gen = ++_conversationsGeneration;
+
+    // Only show loading spinner on initial load if no conversations exist and not already in loaded composite state
+    if (_allConversations.isEmpty && !event.isBackground && state is! ConversationsLoaded) {
       emit(ChatLoading());
     }
     try {
       final conversations = await chatRepository.getConversations();
+      if (gen != _conversationsGeneration) return;
       _allConversations = List.from(conversations);
-      emit(ConversationsLoaded(_allConversations));
+
+      final currentState = state;
+      if (currentState is ConversationsLoaded && currentState.hasActiveConversation) {
+        // Preserve active conversation view, just update the conversations list
+        emit(currentState.copyWith(conversations: List.from(_allConversations)));
+      } else {
+        emit(ConversationsLoaded(List.from(_allConversations)));
+      }
     } catch (e) {
-      emit(ChatError(_formatErrorMessage(e, 'Impossible de charger les conversations')));
+      if (gen != _conversationsGeneration) return;
+      emit(ChatError(
+        _formatErrorMessage(e, 'Impossible de charger les conversations'),
+        conversations: List.from(_allConversations),
+      ));
     }
   }
 
   Future<void> _onLoadMessages(LoadMessages event, Emitter<ChatState> emit) async {
-    emit(ChatLoading());
+    final convId = event.conversationId;
+    final gen = (_messagesGenerations[convId] ?? 0) + 1;
+    _messagesGenerations[convId] = gen;
+
+    final composite = _currentCompositeState();
+
+    // Show loading only if not background
+    if (!event.isBackground) {
+      emit(composite.copyWith(
+        activeConversationId: convId,
+        isLoadingMessages: true,
+        messages: composite.activeConversationId == convId
+            ? composite.messages
+            : const [],
+      ));
+    }
+
     try {
-      final rawMessages = await chatRepository.getMessages(event.conversationId);
-      final messages = _sortAndDeduplicate(rawMessages);
+      final rawMessages = await chatRepository.getMessages(convId);
+      if (gen != _messagesGenerations[convId]) {
+        // Stale REST response ignored silently (P0-2)
+        return;
+      }
+
+      final latestState = _currentCompositeState();
+      // Safe merge: preserve any message received via WS or sent optimistically in the meantime
+      final currentMessages = latestState.activeConversationId == convId
+          ? latestState.messages
+          : const <MiighoMessageItem>[];
+      final messages = _sortAndDeduplicate([...rawMessages, ...currentMessages]);
+
       MiighoConversation? conv;
-      final existingIdx = _allConversations.indexWhere((c) => c.id == event.conversationId);
+      final existingIdx = _allConversations.indexWhere((c) => c.id == convId);
       if (existingIdx != -1) {
         conv = _allConversations[existingIdx];
       } else {
-        conv = await chatRepository.getConversation(event.conversationId);
+        conv = await chatRepository.getConversation(convId);
+        if (gen != _messagesGenerations[convId]) return;
       }
-      emit(MessagesLoaded(
-        conversationId: event.conversationId,
+
+      emit(latestState.copyWith(
+        conversations: List.from(_allConversations),
+        activeConversationId: convId,
         messages: messages,
-        conversation: conv,
+        activeConversation: conv,
+        isLoadingMessages: false,
       ));
     } catch (e) {
-      emit(ChatError(_formatErrorMessage(e, 'Impossible de charger les messages')));
+      if (gen != _messagesGenerations[convId]) return;
+      emit(ChatError(
+        _formatErrorMessage(e, 'Impossible de charger les messages'),
+        conversations: List.from(_allConversations),
+      ));
     }
   }
 
@@ -349,13 +534,10 @@ class ChatBloc extends Bloc<ChatEvent, ChatState> {
       clientMessageId: clientMessageId,
     );
 
-    final currentState = state;
-    if (currentState is MessagesLoaded && currentState.conversationId == event.conversationId) {
-      emit(currentState.copyWith(messages: _sortAndDeduplicate([optimisticMessage, ...currentState.messages])));
-    } else {
-      emit(MessagesLoaded(
-        conversationId: event.conversationId,
-        messages: [optimisticMessage],
+    final currentState = _currentCompositeState();
+    if (currentState.activeConversationId == event.conversationId) {
+      emit(currentState.copyWith(
+        messages: _sortAndDeduplicate([optimisticMessage, ...currentState.messages]),
       ));
     }
 
@@ -368,9 +550,11 @@ class ChatBloc extends Bloc<ChatEvent, ChatState> {
         clientMessageId: clientMessageId,
       );
 
-      final latestState = state;
-      if (latestState is MessagesLoaded && latestState.conversationId == event.conversationId) {
-        emit(latestState.copyWith(messages: _sortAndDeduplicate([serverConfirmed, ...latestState.messages])));
+      final latestState = _currentCompositeState();
+      if (latestState.activeConversationId == event.conversationId) {
+        emit(latestState.copyWith(
+          messages: _sortAndDeduplicate([serverConfirmed, ...latestState.messages]),
+        ));
       }
 
       // Update conversation subtitle in conversation list
@@ -386,8 +570,8 @@ class ChatBloc extends Bloc<ChatEvent, ChatState> {
       }
     } catch (e) {
       // Reconcile as failed (no fake success)
-      final latestState = state;
-      if (latestState is MessagesLoaded && latestState.conversationId == event.conversationId) {
+      final latestState = _currentCompositeState();
+      if (latestState.activeConversationId == event.conversationId) {
         final updatedList = latestState.messages.map((m) {
           return (m.id == tempId || (m.clientMessageId != null && m.clientMessageId == clientMessageId))
               ? m.copyWith(status: MessageDeliveryStatus.failed)
@@ -412,14 +596,9 @@ class ChatBloc extends Bloc<ChatEvent, ChatState> {
       timestamp: DateTime.now(),
     );
 
-    final currentState = state;
-    if (currentState is MessagesLoaded && currentState.conversationId == event.conversationId) {
+    final currentState = _currentCompositeState();
+    if (currentState.activeConversationId == event.conversationId) {
       emit(currentState.copyWith(messages: [optimisticMessage, ...currentState.messages]));
-    } else {
-      emit(MessagesLoaded(
-        conversationId: event.conversationId,
-        messages: [optimisticMessage],
-      ));
     }
 
     try {
@@ -433,16 +612,16 @@ class ChatBloc extends Bloc<ChatEvent, ChatState> {
         metadata: {'duration_seconds': event.duration.inSeconds},
       );
 
-      final latestState = state;
-      if (latestState is MessagesLoaded && latestState.conversationId == event.conversationId) {
+      final latestState = _currentCompositeState();
+      if (latestState.activeConversationId == event.conversationId) {
         final updatedList = latestState.messages.map((m) {
           return m.id == tempId ? serverConfirmed : m;
         }).toList();
         emit(latestState.copyWith(messages: updatedList));
       }
     } catch (_) {
-      final latestState = state;
-      if (latestState is MessagesLoaded && latestState.conversationId == event.conversationId) {
+      final latestState = _currentCompositeState();
+      if (latestState.activeConversationId == event.conversationId) {
         final updatedList = latestState.messages.map((m) {
           return m.id == tempId ? m.copyWith(status: MessageDeliveryStatus.failed) : m;
         }).toList();
@@ -470,14 +649,9 @@ class ChatBloc extends Bloc<ChatEvent, ChatState> {
       replyToId: event.replyToId,
     );
 
-    final currentState = state;
-    if (currentState is MessagesLoaded && currentState.conversationId == event.conversationId) {
+    final currentState = _currentCompositeState();
+    if (currentState.activeConversationId == event.conversationId) {
       emit(currentState.copyWith(messages: [optimisticMessage, ...currentState.messages]));
-    } else {
-      emit(MessagesLoaded(
-        conversationId: event.conversationId,
-        messages: [optimisticMessage],
-      ));
     }
 
     try {
@@ -490,16 +664,16 @@ class ChatBloc extends Bloc<ChatEvent, ChatState> {
         metadata: {'file_name': event.filePath.split('/').last},
       );
 
-      final latestState = state;
-      if (latestState is MessagesLoaded && latestState.conversationId == event.conversationId) {
+      final latestState = _currentCompositeState();
+      if (latestState.activeConversationId == event.conversationId) {
         final updatedList = latestState.messages.map((m) {
           return m.id == tempId ? serverConfirmed : m;
         }).toList();
         emit(latestState.copyWith(messages: updatedList));
       }
     } catch (_) {
-      final latestState = state;
-      if (latestState is MessagesLoaded && latestState.conversationId == event.conversationId) {
+      final latestState = _currentCompositeState();
+      if (latestState.activeConversationId == event.conversationId) {
         final updatedList = latestState.messages.map((m) {
           return m.id == tempId ? m.copyWith(status: MessageDeliveryStatus.failed) : m;
         }).toList();
@@ -509,7 +683,9 @@ class ChatBloc extends Bloc<ChatEvent, ChatState> {
   }
 
   Future<void> _onCreateConversation(CreateConversationEvent event, Emitter<ChatState> emit) async {
-    emit(ChatLoading());
+    final composite = _currentCompositeState();
+    emit(composite.copyWith(isLoadingMessages: true));
+
     try {
       final newConv = await chatRepository.createConversation(event.recipientId);
       final existingIdx = _allConversations.indexWhere((c) => c.id == newConv.id);
@@ -517,20 +693,36 @@ class ChatBloc extends Bloc<ChatEvent, ChatState> {
         _allConversations.removeAt(existingIdx);
       }
       _allConversations.insert(0, newConv);
-      emit(ConversationsLoaded(List.from(_allConversations), activeConversationId: newConv.id));
+      emit(ConversationsLoaded(
+        List.from(_allConversations),
+        activeConversationId: newConv.id,
+        isLoadingMessages: false,
+      ));
     } catch (e) {
-      emit(ChatError('Erreur création conversation: $e'));
+      emit(ChatError(
+        'Erreur création conversation: $e',
+        conversations: List.from(_allConversations),
+      ));
     }
   }
 
   Future<void> _onCreateGroup(CreateGroupEvent event, Emitter<ChatState> emit) async {
-    emit(ChatLoading());
+    final composite = _currentCompositeState();
+    emit(composite.copyWith(isLoadingMessages: true));
+
     try {
       final newGroup = await chatRepository.createGroup(event.name, event.memberIds);
       _allConversations.insert(0, newGroup);
-      emit(ConversationsLoaded(List.from(_allConversations), activeConversationId: newGroup.id));
+      emit(ConversationsLoaded(
+        List.from(_allConversations),
+        activeConversationId: newGroup.id,
+        isLoadingMessages: false,
+      ));
     } catch (e) {
-      emit(ChatError('Erreur création groupe: $e'));
+      emit(ChatError(
+        'Erreur création groupe: $e',
+        conversations: List.from(_allConversations),
+      ));
     }
   }
 
@@ -544,7 +736,8 @@ class ChatBloc extends Bloc<ChatEvent, ChatState> {
         if (!a.isPinned && b.isPinned) return 1;
         return b.updatedAt.compareTo(a.updatedAt);
       });
-      emit(ConversationsLoaded(List.from(_allConversations)));
+      final composite = _currentCompositeState();
+      emit(composite.copyWith(conversations: List.from(_allConversations)));
     }
   }
 
@@ -553,13 +746,14 @@ class ChatBloc extends Bloc<ChatEvent, ChatState> {
     if (idx != -1) {
       final item = _allConversations[idx];
       _allConversations[idx] = item.copyWith(isMuted: !item.isMuted);
-      emit(ConversationsLoaded(List.from(_allConversations)));
+      final composite = _currentCompositeState();
+      emit(composite.copyWith(conversations: List.from(_allConversations)));
     }
   }
 
   Future<void> _onAddReaction(AddReactionEvent event, Emitter<ChatState> emit) async {
-    final currentState = state;
-    if (currentState is MessagesLoaded && currentState.conversationId == event.conversationId) {
+    final currentState = _currentCompositeState();
+    if (currentState.activeConversationId == event.conversationId) {
       final updatedMessages = currentState.messages.map((m) {
         if (m.id == event.messageId) {
           final existing = List<MessageReactionData>.from(m.reactions);
@@ -586,8 +780,8 @@ class ChatBloc extends Bloc<ChatEvent, ChatState> {
   }
 
   Future<void> _onRemoveReaction(RemoveReactionEvent event, Emitter<ChatState> emit) async {
-    final currentState = state;
-    if (currentState is MessagesLoaded && currentState.conversationId == event.conversationId) {
+    final currentState = _currentCompositeState();
+    if (currentState.activeConversationId == event.conversationId) {
       final updatedMessages = currentState.messages.map((m) {
         if (m.id == event.messageId) {
           final existing = List<MessageReactionData>.from(m.reactions);
@@ -616,8 +810,8 @@ class ChatBloc extends Bloc<ChatEvent, ChatState> {
   }
 
   Future<void> _onEditMessage(EditMessageEvent event, Emitter<ChatState> emit) async {
-    final currentState = state;
-    if (currentState is MessagesLoaded && currentState.conversationId == event.conversationId) {
+    final currentState = _currentCompositeState();
+    if (currentState.activeConversationId == event.conversationId) {
       final updatedMessages = currentState.messages.map((m) {
         if (m.id == event.messageId) {
           return m.copyWith(content: event.newContent, editedAt: DateTime.now());
@@ -633,8 +827,8 @@ class ChatBloc extends Bloc<ChatEvent, ChatState> {
   }
 
   Future<void> _onDeleteMessage(DeleteMessageEvent event, Emitter<ChatState> emit) async {
-    final currentState = state;
-    if (currentState is MessagesLoaded && currentState.conversationId == event.conversationId) {
+    final currentState = _currentCompositeState();
+    if (currentState.activeConversationId == event.conversationId) {
       final updatedMessages = currentState.messages.where((m) => m.id != event.messageId).toList();
       emit(currentState.copyWith(messages: updatedMessages));
     }
@@ -667,12 +861,17 @@ class ChatBloc extends Bloc<ChatEvent, ChatState> {
           final currentUserId = await chatRepository.secureStorage.getUserId() ?? '';
           final newMsg = MiighoMessageItem.fromJson(data, currentUserId: currentUserId);
 
-          final currentState = state;
-          if (currentState is MessagesLoaded && currentState.conversationId == convId) {
-            emit(currentState.copyWith(messages: _sortAndDeduplicate([newMsg, ...currentState.messages])));
+          final currentState = _currentCompositeState();
+
+          // Always update messages if viewing this conversation
+          if (currentState.activeConversationId == convId) {
+            emit(currentState.copyWith(
+              messages: _sortAndDeduplicate([newMsg, ...currentState.messages]),
+              conversations: List.from(_allConversations), // ensure up-to-date
+            ));
           }
 
-          // Update conversations list
+          // Always update conversations list (even when viewing messages!)
           final idx = _allConversations.indexWhere((c) => c.id == convId);
           if (idx != -1) {
             final old = _allConversations[idx];
@@ -681,18 +880,23 @@ class ChatBloc extends Bloc<ChatEvent, ChatState> {
               updatedAt: newMsg.timestamp,
               isLastMessageFromMe: newMsg.isMe,
               lastMessageStatus: newMsg.status,
-              unreadCount: (currentState is MessagesLoaded && currentState.conversationId == convId)
+              unreadCount: (currentState.activeConversationId == convId)
                   ? 0
                   : old.unreadCount + 1,
             );
             _allConversations[idx] = updated;
+
+            // Re-emit with updated conversations if we haven't already
+            if (currentState.activeConversationId != convId) {
+              emit(currentState.copyWith(conversations: List.from(_allConversations)));
+            }
           }
         }
         break;
 
       case 'message.read':
-        final currentState = state;
-        if (currentState is MessagesLoaded && currentState.conversationId == convId) {
+        final currentState = _currentCompositeState();
+        if (currentState.activeConversationId == convId) {
           final updated = currentState.messages.map((m) {
             return m.isMe ? m.copyWith(status: MessageDeliveryStatus.read) : m;
           }).toList();
@@ -701,8 +905,8 @@ class ChatBloc extends Bloc<ChatEvent, ChatState> {
         break;
 
       case 'message.delivered':
-        final currentState = state;
-        if (currentState is MessagesLoaded && currentState.conversationId == convId) {
+        final currentState = _currentCompositeState();
+        if (currentState.activeConversationId == convId) {
           final updated = currentState.messages.map((m) {
             return (m.isMe && m.status != MessageDeliveryStatus.read)
                 ? m.copyWith(status: MessageDeliveryStatus.delivered)
@@ -716,8 +920,8 @@ class ChatBloc extends Bloc<ChatEvent, ChatState> {
         if (data is Map<String, dynamic>) {
           final msgId = data['id'] as String?;
           final newContent = data['content'] as String?;
-          final currentState = state;
-          if (currentState is MessagesLoaded && currentState.conversationId == convId && msgId != null) {
+          final currentState = _currentCompositeState();
+          if (currentState.activeConversationId == convId && msgId != null) {
             final updated = currentState.messages.map((m) {
               return m.id == msgId
                   ? m.copyWith(content: newContent ?? m.content, editedAt: DateTime.now())
@@ -730,8 +934,8 @@ class ChatBloc extends Bloc<ChatEvent, ChatState> {
 
       case 'message.deleted':
         final msgId = (data is Map<String, dynamic>) ? data['id'] as String? : data?.toString();
-        final currentState = state;
-        if (currentState is MessagesLoaded && currentState.conversationId == convId && msgId != null) {
+        final currentState = _currentCompositeState();
+        if (currentState.activeConversationId == convId && msgId != null) {
           final updated = currentState.messages.where((m) => m.id != msgId).toList();
           emit(currentState.copyWith(messages: updated));
         }
@@ -744,8 +948,8 @@ class ChatBloc extends Bloc<ChatEvent, ChatState> {
           final uid = data['user_id'] as String?;
           final currentUserId = await chatRepository.secureStorage.getUserId() ?? '';
 
-          final currentState = state;
-          if (currentState is MessagesLoaded && currentState.conversationId == convId && msgId != null && emoji != null) {
+          final currentState = _currentCompositeState();
+          if (currentState.activeConversationId == convId && msgId != null && emoji != null) {
             final updated = currentState.messages.map((m) {
               if (m.id == msgId) {
                 final existing = List<MessageReactionData>.from(m.reactions);
@@ -779,8 +983,8 @@ class ChatBloc extends Bloc<ChatEvent, ChatState> {
           final uid = data['user_id'] as String?;
           final currentUserId = await chatRepository.secureStorage.getUserId() ?? '';
 
-          final currentState = state;
-          if (currentState is MessagesLoaded && currentState.conversationId == convId && msgId != null && emoji != null) {
+          final currentState = _currentCompositeState();
+          if (currentState.activeConversationId == convId && msgId != null && emoji != null) {
             final updated = currentState.messages.map((m) {
               if (m.id == msgId) {
                 final existing = List<MessageReactionData>.from(m.reactions);
@@ -808,8 +1012,8 @@ class ChatBloc extends Bloc<ChatEvent, ChatState> {
       case 'user.typing':
       case 'typing.started':
       case 'typing.stopped':
-        final currentState = state;
-        if (currentState is MessagesLoaded && currentState.conversationId == convId) {
+        final currentState = _currentCompositeState();
+        if (currentState.activeConversationId == convId) {
           bool isTyping = false;
           if (type == 'typing.started') {
             isTyping = true;
@@ -827,6 +1031,7 @@ class ChatBloc extends Bloc<ChatEvent, ChatState> {
   @override
   Future<void> close() {
     _wsSubscription?.cancel();
+    _wsStateSubscription?.cancel();
     return super.close();
   }
 }

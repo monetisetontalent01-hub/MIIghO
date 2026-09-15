@@ -280,6 +280,27 @@ func (r *MemoryChatRepository) GetConversationMembers(ctx context.Context, conve
 	return result, nil
 }
 
+func (r *MemoryChatRepository) GetConversationMemberDetails(ctx context.Context, conversationID uuid.UUID) ([]ConversationMemberDetail, error) {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+	members, ok := r.members[conversationID]
+	if !ok {
+		return []ConversationMemberDetail{}, nil
+	}
+	var result []ConversationMemberDetail
+	for _, m := range members {
+		result = append(result, ConversationMemberDetail{
+			UserID:    m,
+			MiighoID:  formatMiighoID(m),
+			FirstName: "User",
+			LastName:  m.String()[:4],
+			Role:      "member",
+			JoinedAt:  time.Now(),
+		})
+	}
+	return result, nil
+}
+
 func (r *MemoryChatRepository) CreateGroupConversation(ctx context.Context, creatorID uuid.UUID, name string, memberIDs []uuid.UUID) (*Conversation, error) {
 	r.mu.Lock()
 	defer r.mu.Unlock()

@@ -53,6 +53,17 @@ type ConversationMember struct {
 	JoinedAt       time.Time `json:"joined_at"`
 }
 
+// ConversationMemberDetail represents a participant with full profile details.
+type ConversationMemberDetail struct {
+	UserID    uuid.UUID `json:"user_id"`
+	MiighoID  string    `json:"miigho_id"`
+	FirstName string    `json:"first_name"`
+	LastName  string    `json:"last_name"`
+	AvatarURL string    `json:"avatar_url"`
+	Role      string    `json:"role"`
+	JoinedAt  time.Time `json:"joined_at"`
+}
+
 // Message represents a chat message.
 type Message struct {
 	ID                 uuid.UUID                      `json:"id"`

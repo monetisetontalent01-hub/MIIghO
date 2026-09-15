@@ -47,9 +47,7 @@ class _HomeScreenState extends State<HomeScreen> {
         return BlocBuilder<ChatBloc, ChatState>(
           builder: (context, chatState) {
             int unreadCount = 0;
-            if (chatState is ConversationsLoaded) {
-              unreadCount = chatState.conversations.fold<int>(0, (sum, c) => sum + c.unreadCount);
-            }
+            unreadCount = chatState.conversations.fold<int>(0, (sum, c) => sum + c.unreadCount);
 
             return Scaffold(
               backgroundColor: isDark ? MiighoColors.canvas : MiighoColors.lightCanvas,

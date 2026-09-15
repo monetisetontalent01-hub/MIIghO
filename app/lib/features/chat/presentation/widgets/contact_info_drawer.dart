@@ -1,13 +1,17 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_bloc/flutter_bloc.dart';
 import '../../../../core/theme/colors.dart';
 import '../../../../shared/widgets/miigho_avatar.dart';
+import '../../models/chat_models.dart';
+import '../bloc/chat_bloc.dart';
 
-class ContactInfoDrawer extends StatelessWidget {
+class ContactInfoDrawer extends StatefulWidget {
   final String title;
   final String? subtitle;
   final String? avatarUrl;
   final bool isGroup;
   final bool isOnline;
+  final String? conversationId;
 
   const ContactInfoDrawer({
     super.key,
@@ -16,7 +20,52 @@ class ContactInfoDrawer extends StatelessWidget {
     this.avatarUrl,
     this.isGroup = false,
     this.isOnline = false,
+    this.conversationId,
   });
+
+  @override
+  State<ContactInfoDrawer> createState() => _ContactInfoDrawerState();
+}
+
+class _ContactInfoDrawerState extends State<ContactInfoDrawer> {
+  List<ConversationMemberDetail> _members = [];
+  bool _isLoadingMembers = false;
+
+  @override
+  void initState() {
+    super.initState();
+    if (widget.isGroup && widget.conversationId != null) {
+      _loadMembers();
+    }
+  }
+
+  @override
+  void didUpdateWidget(covariant ContactInfoDrawer oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (widget.conversationId != oldWidget.conversationId &&
+        widget.isGroup &&
+        widget.conversationId != null) {
+      _loadMembers();
+    }
+  }
+
+  Future<void> _loadMembers() async {
+    setState(() => _isLoadingMembers = true);
+    try {
+      final members = await context
+          .read<ChatBloc>()
+          .chatRepository
+          .getConversationMembers(widget.conversationId!);
+      if (mounted) {
+        setState(() {
+          _members = members;
+          _isLoadingMembers = false;
+        });
+      }
+    } catch (_) {
+      if (mounted) setState(() => _isLoadingMembers = false);
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -37,7 +86,7 @@ class ContactInfoDrawer extends StatelessWidget {
       child: Column(
         children: [
           AppBar(
-            title: Text(isGroup ? 'Infos du groupe' : 'Infos du contact'),
+            title: Text(widget.isGroup ? 'Infos du groupe' : 'Infos du contact'),
             leading: IconButton(
               icon: const Icon(Icons.close_rounded),
               onPressed: () => Navigator.of(context).maybePop(),
@@ -49,17 +98,17 @@ class ContactInfoDrawer extends StatelessWidget {
               children: [
                 Center(
                   child: MiighoAvatar(
-                    name: title,
-                    avatarUrl: avatarUrl,
+                    name: widget.title,
+                    avatarUrl: widget.avatarUrl,
                     size: MiighoAvatarSize.xl,
-                    isOnline: isOnline,
-                    showPresenceIndicator: !isGroup,
+                    isOnline: widget.isOnline,
+                    showPresenceIndicator: !widget.isGroup,
                   ),
                 ),
                 const SizedBox(height: 14),
                 Center(
                   child: Text(
-                    title,
+                    widget.title,
                     style: TextStyle(
                       fontFamily: 'Outfit',
                       fontSize: 20,
@@ -71,10 +120,16 @@ class ContactInfoDrawer extends StatelessWidget {
                 const SizedBox(height: 4),
                 Center(
                   child: Text(
-                    isGroup ? 'Groupe de discussion MÏÏghO' : (isOnline ? 'En ligne actuellement' : 'Hors ligne'),
+                    widget.isGroup
+                        ? (_members.isNotEmpty
+                            ? '${_members.length} membres'
+                            : 'Groupe de discussion MÏÏghO')
+                        : (widget.isOnline ? 'En ligne actuellement' : 'Hors ligne'),
                     style: TextStyle(
                       fontSize: 12,
-                      color: isOnline ? const Color(0xFF10B981) : (isDark ? MiighoColors.textSecondary : MiighoColors.lightTextSecondary),
+                      color: widget.isOnline
+                          ? const Color(0xFF10B981)
+                          : (isDark ? MiighoColors.textSecondary : MiighoColors.lightTextSecondary),
                       fontWeight: FontWeight.w600,
                     ),
                   ),
@@ -120,6 +175,101 @@ class ContactInfoDrawer extends StatelessWidget {
                 const SizedBox(height: 24),
                 const Divider(height: 1),
                 const SizedBox(height: 16),
+
+                // Membres du groupe (si groupe)
+                if (widget.isGroup) ...[
+                  _buildSectionHeader('MEMBRES DU GROUPE (${_members.length})'),
+                  if (_isLoadingMembers)
+                    const Center(
+                      child: Padding(
+                        padding: EdgeInsets.all(16),
+                        child: SizedBox(
+                          width: 24,
+                          height: 24,
+                          child: CircularProgressIndicator(strokeWidth: 2),
+                        ),
+                      ),
+                    )
+                  else if (_members.isEmpty)
+                    Padding(
+                      padding: const EdgeInsets.symmetric(vertical: 8),
+                      child: Text(
+                        'Aucun membre disponible',
+                        style: TextStyle(
+                          fontSize: 12,
+                          color: isDark ? MiighoColors.textMuted : MiighoColors.lightTextMuted,
+                        ),
+                      ),
+                    )
+                  else
+                    Container(
+                      decoration: BoxDecoration(
+                        color: isDark ? MiighoColors.surface2 : MiighoColors.lightSurface2,
+                        borderRadius: BorderRadius.circular(12),
+                        border: Border.all(
+                          color: isDark ? MiighoColors.borderSubtle : MiighoColors.lightBorderSubtle,
+                        ),
+                      ),
+                      child: ListView.separated(
+                        shrinkWrap: true,
+                        physics: const NeverScrollableScrollPhysics(),
+                        itemCount: _members.length,
+                        separatorBuilder: (_, __) => Divider(
+                          height: 1,
+                          color: isDark ? MiighoColors.borderSubtle : MiighoColors.lightBorderSubtle,
+                        ),
+                        itemBuilder: (context, index) {
+                          final member = _members[index];
+                          return ListTile(
+                            dense: true,
+                            leading: MiighoAvatar(
+                              name: member.displayName,
+                              avatarUrl: member.avatarUrl.isNotEmpty ? member.avatarUrl : null,
+                              size: MiighoAvatarSize.sm,
+                            ),
+                            title: Text(
+                              member.displayName,
+                              style: TextStyle(
+                                fontSize: 13,
+                                fontWeight: FontWeight.w600,
+                                color: isDark ? MiighoColors.textPrimary : MiighoColors.lightTextPrimary,
+                              ),
+                            ),
+                            subtitle: member.miighoId.isNotEmpty
+                                ? Text(
+                                    '@${member.miighoId}',
+                                    style: TextStyle(
+                                      fontSize: 11,
+                                      color: isDark ? MiighoColors.textSecondary : MiighoColors.lightTextSecondary,
+                                    ),
+                                  )
+                                : null,
+                            trailing: member.isAdmin
+                                ? Container(
+                                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                                    decoration: BoxDecoration(
+                                      color: MiighoColors.primary.withValues(alpha: 0.15),
+                                      borderRadius: BorderRadius.circular(6),
+                                      border: Border.all(
+                                        color: MiighoColors.primary.withValues(alpha: 0.3),
+                                      ),
+                                    ),
+                                    child: const Text(
+                                      'Admin',
+                                      style: TextStyle(
+                                        fontSize: 10,
+                                        fontWeight: FontWeight.w700,
+                                        color: MiighoColors.primary,
+                                      ),
+                                    ),
+                                  )
+                                : null,
+                          );
+                        },
+                      ),
+                    ),
+                  const SizedBox(height: 20),
+                ],
 
                 // Chiffrement de bout en bout
                 Container(
@@ -191,7 +341,7 @@ class ContactInfoDrawer extends StatelessWidget {
                 ),
                 _buildOptionTile(
                   icon: Icons.block_flipped,
-                  title: 'Bloquer le contact',
+                  title: widget.isGroup ? 'Quitter le groupe' : 'Bloquer le contact',
                   color: MiighoColors.error,
                   isDark: isDark,
                   onTap: () {},
@@ -236,7 +386,7 @@ class ContactInfoDrawer extends StatelessWidget {
             Container(
               width: 44,
               height: 44,
-              decoration: BoxDecoration(
+              decoration: const BoxDecoration(
                 color: MiighoColors.primaryAlpha,
                 shape: BoxShape.circle,
               ),

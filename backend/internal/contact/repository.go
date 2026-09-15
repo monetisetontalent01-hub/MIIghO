@@ -22,7 +22,7 @@ type ContactRepository interface {
 	CreateContactRequest(ctx context.Context, senderID, recipientID uuid.UUID) (*ContactRequest, error)
 	GetContactRequests(ctx context.Context, userID uuid.UUID, direction string) ([]ContactRequest, error)
 	GetContactRequest(ctx context.Context, requestID uuid.UUID) (*ContactRequest, error)
-	AcceptContactRequest(ctx context.Context, requestID, recipientID uuid.UUID) error
+	AcceptContactRequest(ctx context.Context, requestID, recipientID uuid.UUID) (uuid.UUID, error)
 	RejectContactRequest(ctx context.Context, requestID, recipientID uuid.UUID) error
 	AreContacts(ctx context.Context, userA, userB uuid.UUID) (bool, error)
 	GetRelationshipStatus(ctx context.Context, currentUserID, otherUserID uuid.UUID) (RelationshipStatus, error)
@@ -302,10 +302,10 @@ func (r *PostgresContactRepository) GetContactRequest(ctx context.Context, reque
 }
 
 // AcceptContactRequest atomically updates the request to 'accepted' and creates reciprocal contact entries.
-func (r *PostgresContactRepository) AcceptContactRequest(ctx context.Context, requestID, recipientID uuid.UUID) error {
+func (r *PostgresContactRepository) AcceptContactRequest(ctx context.Context, requestID, recipientID uuid.UUID) (uuid.UUID, error) {
 	tx, err := r.pool.Begin(ctx)
 	if err != nil {
-		return err
+		return uuid.Nil, err
 	}
 	defer tx.Rollback(ctx)
 
@@ -317,9 +317,9 @@ func (r *PostgresContactRepository) AcceptContactRequest(ctx context.Context, re
 	).Scan(&senderID)
 	if err != nil {
 		if err == pgx.ErrNoRows {
-			return fmt.Errorf("contact request not found or already processed")
+			return uuid.Nil, fmt.Errorf("contact request not found or already processed")
 		}
-		return err
+		return uuid.Nil, err
 	}
 
 	// 2. Create reciprocal contact entries (A->B and B->A)
@@ -328,14 +328,14 @@ func (r *PostgresContactRepository) AcceptContactRequest(ctx context.Context, re
 		senderID, recipientID,
 	)
 	if err != nil {
-		return err
+		return uuid.Nil, err
 	}
 	_, err = tx.Exec(ctx,
 		"INSERT INTO contacts (user_id, contact_user_id, is_favorite, created_at) VALUES ($1, $2, false, NOW()) ON CONFLICT DO NOTHING",
 		recipientID, senderID,
 	)
 	if err != nil {
-		return err
+		return uuid.Nil, err
 	}
 
 	// 3. If there was a reciprocal pending request, accept it too (mutual)
@@ -344,7 +344,7 @@ func (r *PostgresContactRepository) AcceptContactRequest(ctx context.Context, re
 		recipientID, senderID,
 	)
 
-	return tx.Commit(ctx)
+	return senderID, tx.Commit(ctx)
 }
 
 func (r *PostgresContactRepository) RejectContactRequest(ctx context.Context, requestID, recipientID uuid.UUID) error {

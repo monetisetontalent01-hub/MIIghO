@@ -292,3 +292,43 @@ class MiighoMessageItem {
     );
   }
 }
+
+class ConversationMemberDetail {
+  final String userId;
+  final String miighoId;
+  final String firstName;
+  final String lastName;
+  final String avatarUrl;
+  final String role;
+  final DateTime? joinedAt;
+
+  const ConversationMemberDetail({
+    required this.userId,
+    required this.miighoId,
+    required this.firstName,
+    required this.lastName,
+    required this.avatarUrl,
+    required this.role,
+    this.joinedAt,
+  });
+
+  String get displayName {
+    final full = '$firstName $lastName'.trim();
+    return full.isNotEmpty ? full : (miighoId.isNotEmpty ? miighoId : 'Membre');
+  }
+
+  bool get isAdmin => role.toLowerCase() == 'admin';
+
+  factory ConversationMemberDetail.fromJson(Map<String, dynamic> json) {
+    return ConversationMemberDetail(
+      userId: json['user_id'] as String? ?? '',
+      miighoId: json['miigho_id'] as String? ?? '',
+      firstName: json['first_name'] as String? ?? '',
+      lastName: json['last_name'] as String? ?? '',
+      avatarUrl: json['avatar_url'] as String? ?? '',
+      role: json['role'] as String? ?? 'member',
+      joinedAt: json['joined_at'] != null ? DateTime.tryParse(json['joined_at'] as String) : null,
+    );
+  }
+}
+

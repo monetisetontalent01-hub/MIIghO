@@ -122,6 +122,7 @@ func main() {
 	hub := chat.NewHub()
 	go hub.Run()
 	chatService.SetHub(hub)
+	contactService.SetEventBroadcaster(hub)
 	logger.Info().Msg("WebSocket Hub running")
 
 	// Initialize handlers
