@@ -139,17 +139,25 @@ void main() {
 
       print('[TEST A] Restauration réseau : reconnexion du WebSocket A...');
       await chatRepoA.connectWebSocket();
-      print('[TEST A] Reconnexion déclenchée. Attente réconciliation automatique...');
+      print('[TEST A] Reconnexion déclenchée. Attente réconciliation automatique (polling jusqu\'à 15s)...');
 
-      await Future.delayed(const Duration(seconds: 3));
+      List<MiighoMessageItem> finalMessages = [];
+      bool hasB1 = false, hasB2 = false, hasB3 = false;
+      for (int i = 0; i < 30; i++) {
+        await Future.delayed(const Duration(milliseconds: 500));
+        if (chatBlocA.state is ConversationsLoaded) {
+          finalMessages = (chatBlocA.state as ConversationsLoaded).messages;
+          hasB1 = finalMessages.any((m) => m.id == b1.id || m.content == msgB1Content);
+          hasB2 = finalMessages.any((m) => m.id == b2.id || m.content == msgB2Content);
+          hasB3 = finalMessages.any((m) => m.id == b3.id || m.content == msgB3Content);
+          if (hasB1 && hasB2 && hasB3) {
+            print('[TEST A] Convergence observée après ${(i + 1) * 0.5}s !');
+            break;
+          }
+        }
+      }
 
-      final finalState = chatBlocA.state as ConversationsLoaded;
-      final finalMessages = finalState.messages;
       print('[TEST A] Nombre de messages dans ChatBloc A après réconciliation : ${finalMessages.length}');
-
-      final hasB1 = finalMessages.any((m) => m.id == b1.id || m.content == msgB1Content);
-      final hasB2 = finalMessages.any((m) => m.id == b2.id || m.content == msgB2Content);
-      final hasB3 = finalMessages.any((m) => m.id == b3.id || m.content == msgB3Content);
 
       final ids = finalMessages.map((m) => m.id).toList();
       final uniqueIds = ids.toSet();
@@ -191,9 +199,15 @@ void main() {
     try {
       final chatBlocA = ChatBloc(chatRepository: chatRepoA);
       chatBlocA.add(LoadConversations());
-      await Future.delayed(const Duration(milliseconds: 600));
+      for (int i = 0; i < 30; i++) {
+        await Future.delayed(const Duration(milliseconds: 300));
+        if (chatBlocA.state is ConversationsLoaded && (chatBlocA.state as ConversationsLoaded).conversations.isNotEmpty) break;
+      }
       chatBlocA.add(LoadMessages(convAB.id));
-      await Future.delayed(const Duration(milliseconds: 600));
+      for (int i = 0; i < 30; i++) {
+        await Future.delayed(const Duration(milliseconds: 300));
+        if (chatBlocA.state is ConversationsLoaded && (chatBlocA.state as ConversationsLoaded).activeConversationId == convAB.id && !(chatBlocA.state as ConversationsLoaded).isLoadingMessages) break;
+      }
 
       final stateBefore = chatBlocA.state as ConversationsLoaded;
       final activeConvBefore = stateBefore.activeConversationId;
@@ -205,9 +219,25 @@ void main() {
       final sentC = await chatRepoC.sendMessage(conversationId: convAC.id, content: msgCContent);
       print('  ✓ Message de C envoyé: ID=${sentC.id}');
 
-      await Future.delayed(const Duration(seconds: 2));
+      bool isCUpdated = false;
+      bool cPreviewCorrect = false;
+      ConversationsLoaded stateAfter = chatBlocA.state as ConversationsLoaded;
+      for (int i = 0; i < 20; i++) {
+        await Future.delayed(const Duration(milliseconds: 500));
+        if (chatBlocA.state is ConversationsLoaded) {
+          stateAfter = chatBlocA.state as ConversationsLoaded;
+          final convC = stateAfter.conversations.firstWhere(
+            (c) => c.id == convAC.id,
+            orElse: () => MiighoConversation(id: '', title: '', subtitle: '', updatedAt: DateTime.now()),
+          );
+          if (convC.id.isNotEmpty && convC.subtitle == msgCContent) {
+            isCUpdated = true;
+            cPreviewCorrect = true;
+            break;
+          }
+        }
+      }
 
-      final stateAfter = chatBlocA.state as ConversationsLoaded;
       final activeConvAfter = stateAfter.activeConversationId;
       final messagesAfterCount = stateAfter.messages.length;
 
@@ -218,8 +248,6 @@ void main() {
         (c) => c.id == convAC.id,
         orElse: () => MiighoConversation(id: '', title: '', subtitle: '', updatedAt: DateTime.now()),
       );
-      final isCUpdated = convCInSidebar.id.isNotEmpty;
-      final cPreviewCorrect = convCInSidebar.subtitle == msgCContent;
 
       print('[TEST C] B est restée active: $bStillOpen (ID=$activeConvAfter)');
       print('[TEST C] Messages de B conservés: $bMessagesPreserved ($messagesAfterCount msgs)');
@@ -390,25 +418,37 @@ void main() {
       final chatBloc = ChatBloc(chatRepository: chatRepoA);
 
       chatBloc.add(LoadConversations());
-      await Future.delayed(const Duration(milliseconds: 500));
+      for (int i = 0; i < 30; i++) {
+        await Future.delayed(const Duration(milliseconds: 300));
+        if (chatBloc.state is ConversationsLoaded && (chatBloc.state as ConversationsLoaded).conversations.isNotEmpty) break;
+      }
       final step1State = chatBloc.state as ConversationsLoaded;
       final step1ConvCount = step1State.conversations.length;
       print('[TEST F] Étape 1: Liste des conversations chargées ($step1ConvCount conversations)');
 
       chatBloc.add(LoadMessages(convAB.id));
-      await Future.delayed(const Duration(milliseconds: 500));
+      for (int i = 0; i < 30; i++) {
+        await Future.delayed(const Duration(milliseconds: 300));
+        if (chatBloc.state is ConversationsLoaded && (chatBloc.state as ConversationsLoaded).activeConversationId == convAB.id && !(chatBloc.state as ConversationsLoaded).isLoadingMessages) break;
+      }
       final step2State = chatBloc.state as ConversationsLoaded;
       print('[TEST F] Étape 2: Chat B ouvert (active=${step2State.activeConversationId}, convs=${step2State.conversations.length})');
       final step2ConvsIntact = step2State.conversations.length == step1ConvCount;
 
       chatBloc.add(LoadMessages(convAC.id));
-      await Future.delayed(const Duration(milliseconds: 500));
+      for (int i = 0; i < 30; i++) {
+        await Future.delayed(const Duration(milliseconds: 300));
+        if (chatBloc.state is ConversationsLoaded && (chatBloc.state as ConversationsLoaded).activeConversationId == convAC.id && !(chatBloc.state as ConversationsLoaded).isLoadingMessages) break;
+      }
       final step3State = chatBloc.state as ConversationsLoaded;
       print('[TEST F] Étape 3: Chat C ouvert (active=${step3State.activeConversationId}, convs=${step3State.conversations.length})');
       final step3ConvsIntact = step3State.conversations.length == step1ConvCount;
 
       chatBloc.add(LoadConversations(isBackground: false));
-      await Future.delayed(const Duration(milliseconds: 500));
+      for (int i = 0; i < 30; i++) {
+        await Future.delayed(const Duration(milliseconds: 300));
+        if (chatBloc.state is ConversationsLoaded && (chatBloc.state as ConversationsLoaded).activeConversationId == null) break;
+      }
       final step4State = chatBloc.state as ConversationsLoaded;
       print('[TEST F] Étape 4: Retour liste (active=${step4State.activeConversationId}, convs=${step4State.conversations.length})');
 

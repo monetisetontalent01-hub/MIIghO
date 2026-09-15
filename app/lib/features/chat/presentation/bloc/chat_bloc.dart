@@ -320,21 +320,17 @@ class ChatBloc extends Bloc<ChatEvent, ChatState> {
   /// ─── Phase 4 & P0-2: Reconciliation after WS reconnection with generation tracking ───
   Future<void> _onWsReconnected(_WsReconnectedEvent event, Emitter<ChatState> emit) async {
     final convGen = ++_conversationsGeneration;
-    // Silently reload conversations in background
     try {
-      final conversations = await chatRepository.getConversations();
-      if (convGen != _conversationsGeneration) return;
-      _allConversations = List.from(conversations);
-
       final currentState = state;
-      if (currentState is ConversationsLoaded) {
-        // Preserve active conversation view, merge updated conversations
-        if (currentState.hasActiveConversation) {
-          final activeId = currentState.activeConversationId!;
-          final msgGen = (_messagesGenerations[activeId] ?? 0) + 1;
-          _messagesGenerations[activeId] = msgGen;
+      final activeId = (currentState is ConversationsLoaded) ? currentState.activeConversationId : null;
 
-          // Also reload messages for active conversation
+      // 1. Immediately reload messages for active conversation in parallel (fast path)
+      Future<void>? msgReloadFuture;
+      if (activeId != null) {
+        final msgGen = (_messagesGenerations[activeId] ?? 0) + 1;
+        _messagesGenerations[activeId] = msgGen;
+
+        msgReloadFuture = () async {
           try {
             final rawMessages = await chatRepository.getMessages(activeId);
             if (msgGen != _messagesGenerations[activeId]) return;
@@ -352,15 +348,20 @@ class ChatBloc extends Bloc<ChatEvent, ChatState> {
               messages: messages,
               activeConversation: conv,
             ));
-          } catch (_) {
-            // At least update conversations
-            emit(currentState.copyWith(conversations: List.from(_allConversations)));
-          }
-        } else {
-          emit(currentState.copyWith(conversations: List.from(_allConversations)));
-        }
-      } else {
-        emit(ConversationsLoaded(List.from(_allConversations)));
+          } catch (_) {}
+        }();
+      }
+
+      // 2. Concurrently reload conversations list in background
+      final conversations = await chatRepository.getConversations();
+      if (convGen != _conversationsGeneration) return;
+      _allConversations = List.from(conversations);
+
+      final latestState = _currentCompositeState();
+      emit(latestState.copyWith(conversations: List.from(_allConversations)));
+
+      if (msgReloadFuture != null) {
+        await msgReloadFuture;
       }
     } catch (_) {
       // Silently fail — don't disrupt current UI
@@ -890,6 +891,24 @@ class ChatBloc extends Bloc<ChatEvent, ChatState> {
             if (currentState.activeConversationId != convId) {
               emit(currentState.copyWith(conversations: List.from(_allConversations)));
             }
+          } else if (convId != null && convId.isNotEmpty) {
+            // New conversation received via WS that is not yet in local cache
+            try {
+              final newConv = await chatRepository.getConversation(convId);
+              if (newConv != null) {
+                final updated = newConv.copyWith(
+                  subtitle: newMsg.content,
+                  updatedAt: newMsg.timestamp,
+                  isLastMessageFromMe: newMsg.isMe,
+                  lastMessageStatus: newMsg.status,
+                  unreadCount: (currentState.activeConversationId == convId) ? 0 : 1,
+                );
+                _allConversations.insert(0, updated);
+                if (currentState.activeConversationId != convId) {
+                  emit(currentState.copyWith(conversations: List.from(_allConversations)));
+                }
+              }
+            } catch (_) {}
           }
         }
         break;
