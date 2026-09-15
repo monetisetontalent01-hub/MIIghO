@@ -157,130 +157,142 @@ class _MessageBubbleState extends State<MessageBubble> {
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final isDark = theme.brightness == Brightness.dark;
-    final screenWidth = MediaQuery.of(context).size.width;
-    final maxBubbleWidth = screenWidth * 0.78;
 
-    return GestureDetector(
-      onHorizontalDragUpdate: (details) {
-        if (widget.onSwipeReply == null) return;
-        // Allow swiping right on any message to reply
-        if (details.primaryDelta! > 0 || _dragOffset > 0) {
-          setState(() {
-            _dragOffset = (_dragOffset + details.primaryDelta!).clamp(0.0, 80.0);
-          });
-        }
-      },
-      onHorizontalDragEnd: (details) {
-        if (_dragOffset >= _swipeReplyThreshold) {
-          widget.onSwipeReply?.call();
-        }
-        setState(() {
-          _dragOffset = 0.0;
-        });
-      },
-      child: Transform.translate(
-        offset: Offset(_dragOffset, 0),
-        child: Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 12.0, vertical: 3.0),
-          child: Stack(
-            clipBehavior: Clip.none,
-            children: [
-              // Swipe reply indicator icon behind bubble
-              if (_dragOffset > 0)
-                Positioned(
-                  left: -32,
-                  top: 0,
-                  bottom: 0,
-                  child: Center(
-                    child: Opacity(
-                      opacity: (_dragOffset / _swipeReplyThreshold).clamp(0.0, 1.0),
-                      child: Container(
-                        padding: const EdgeInsets.all(6),
-                        decoration: BoxDecoration(
-                          color: MiighoColors.primary.withValues(alpha: 0.15),
-                          shape: BoxShape.circle,
-                        ),
-                        child: const Icon(
-                          Icons.reply_rounded,
-                          size: 18,
-                          color: MiighoColors.primary,
-                        ),
-                      ),
-                    ),
-                  ),
-                ),
+    // P0 FIX: Use LayoutBuilder to derive maxBubbleWidth from actual parent
+    // constraints instead of MediaQuery.of(context).size.width, which can
+    // return the global screen width and cause overflow in embedded layouts.
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final parentWidth = constraints.maxWidth;
+        final maxBubbleWidth = parentWidth * 0.78;
 
-              // Message alignment
-              Align(
-                alignment: widget.isMe ? Alignment.centerRight : Alignment.centerLeft,
-                child: ConstrainedBox(
-                  constraints: BoxConstraints(maxWidth: maxBubbleWidth),
-                  child: Column(
-                    crossAxisAlignment:
-                        widget.isMe ? CrossAxisAlignment.end : CrossAxisAlignment.start,
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      // Bubble Container
-                      GestureDetector(
-                        onTap: widget.onTap,
-                        onLongPress: widget.onLongPress,
-                        onDoubleTap: widget.onDoubleTap,
-                        child: Container(
-                          decoration: BoxDecoration(
-                            color: _getBubbleColor(isDark),
-                            borderRadius: _getBubbleBorderRadius(),
-                            boxShadow: [
-                              BoxShadow(
-                                color: Colors.black.withValues(alpha: isDark ? 0.2 : 0.05),
-                                blurRadius: 4,
-                                offset: const Offset(0, 1.5),
-                              ),
-                            ],
-                          ),
-                          child: ClipRRect(
-                            borderRadius: _getBubbleBorderRadius(),
-                            child: Padding(
-                              padding: _getBubblePadding(),
-                              child: Column(
-                                crossAxisAlignment: CrossAxisAlignment.start,
-                                mainAxisSize: MainAxisSize.min,
-                                children: [
-                                  // Sender name in group chat
-                                  if (widget.isGroup && !widget.isMe && widget.senderName != null)
-                                    _buildGroupSenderName(),
-
-                                  // Quoted Reply Preview
-                                  if (widget.replyData != null)
-                                    _buildReplyHeader(context, isDark),
-
-                                  // Main Message Content
-                                  _buildMessageContent(context, isDark),
-
-                                  const SizedBox(height: 2.0),
-
-                                  // Timestamp, status ticks & encryption badge
-                                  _buildBottomInfoRow(context, isDark),
-                                ],
-                              ),
+        return GestureDetector(
+          onHorizontalDragUpdate: (details) {
+            if (widget.onSwipeReply == null) return;
+            // Allow swiping right on any message to reply
+            if (details.primaryDelta! > 0 || _dragOffset > 0) {
+              setState(() {
+                _dragOffset = (_dragOffset + details.primaryDelta!).clamp(0.0, 80.0);
+              });
+            }
+          },
+          onHorizontalDragEnd: (details) {
+            if (_dragOffset >= _swipeReplyThreshold) {
+              widget.onSwipeReply?.call();
+            }
+            setState(() {
+              _dragOffset = 0.0;
+            });
+          },
+          child: Transform.translate(
+            offset: Offset(_dragOffset, 0),
+            child: Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 12.0, vertical: 3.0),
+              // P0 FIX: Clip.hardEdge prevents the swipe reply icon
+              // (Positioned left:-32) from painting outside bounds, which
+              // on WebKit/Safari expands composited layer bounds and
+              // triggers horizontal scrollbar/oscillation.
+              child: Stack(
+                clipBehavior: Clip.hardEdge,
+                children: [
+                  // Swipe reply indicator icon behind bubble
+                  if (_dragOffset > 0)
+                    Positioned(
+                      left: -32,
+                      top: 0,
+                      bottom: 0,
+                      child: Center(
+                        child: Opacity(
+                          opacity: (_dragOffset / _swipeReplyThreshold).clamp(0.0, 1.0),
+                          child: Container(
+                            padding: const EdgeInsets.all(6),
+                            decoration: BoxDecoration(
+                              color: MiighoColors.primary.withValues(alpha: 0.15),
+                              shape: BoxShape.circle,
+                            ),
+                            child: const Icon(
+                              Icons.reply_rounded,
+                              size: 18,
+                              color: MiighoColors.primary,
                             ),
                           ),
                         ),
                       ),
+                    ),
 
-                      // Reactions Row
-                      if (widget.reactions.isNotEmpty)
-                        Padding(
-                          padding: const EdgeInsets.only(top: 2.0, left: 4.0, right: 4.0),
-                          child: _buildReactionsRow(context, isDark),
-                        ),
-                    ],
+                  // Message alignment
+                  Align(
+                    alignment: widget.isMe ? Alignment.centerRight : Alignment.centerLeft,
+                    child: ConstrainedBox(
+                      constraints: BoxConstraints(maxWidth: maxBubbleWidth),
+                      child: Column(
+                        crossAxisAlignment:
+                            widget.isMe ? CrossAxisAlignment.end : CrossAxisAlignment.start,
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          // Bubble Container
+                          GestureDetector(
+                            onTap: widget.onTap,
+                            onLongPress: widget.onLongPress,
+                            onDoubleTap: widget.onDoubleTap,
+                            child: Container(
+                              decoration: BoxDecoration(
+                                color: _getBubbleColor(isDark),
+                                borderRadius: _getBubbleBorderRadius(),
+                                boxShadow: [
+                                  BoxShadow(
+                                    color: Colors.black.withValues(alpha: isDark ? 0.2 : 0.05),
+                                    blurRadius: 4,
+                                    offset: const Offset(0, 1.5),
+                                  ),
+                                ],
+                              ),
+                              child: ClipRRect(
+                                borderRadius: _getBubbleBorderRadius(),
+                                child: Padding(
+                                  padding: _getBubblePadding(),
+                                  child: Column(
+                                    crossAxisAlignment: CrossAxisAlignment.start,
+                                    mainAxisSize: MainAxisSize.min,
+                                    children: [
+                                      // Sender name in group chat
+                                      if (widget.isGroup && !widget.isMe && widget.senderName != null)
+                                        _buildGroupSenderName(),
+
+                                      // Quoted Reply Preview
+                                      if (widget.replyData != null)
+                                        _buildReplyHeader(context, isDark),
+
+                                      // Main Message Content
+                                      _buildMessageContent(context, isDark),
+
+                                      const SizedBox(height: 2.0),
+
+                                      // Timestamp, status ticks & encryption badge
+                                      _buildBottomInfoRow(context, isDark),
+                                    ],
+                                  ),
+                                ),
+                              ),
+                            ),
+                          ),
+
+                          // Reactions Row
+                          if (widget.reactions.isNotEmpty)
+                            Padding(
+                              padding: const EdgeInsets.only(top: 2.0, left: 4.0, right: 4.0),
+                              child: _buildReactionsRow(context, isDark),
+                            ),
+                        ],
+                      ),
+                    ),
                   ),
-                ),
+                ],
               ),
-            ],
+            ),
           ),
-        ),
-      ),
+        );
+      },
     );
   }
 

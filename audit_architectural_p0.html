@@ -1,0 +1,828 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8">
+<title>Audit Architectural P0 — MÏÏghO Chat V1</title>
+<style>
+  @page {
+    size: A4;
+    margin: 15mm 15mm 18mm 15mm;
+  }
+  
+  * {
+    box-sizing: border-box;
+    -webkit-print-color-adjust: exact;
+    print-color-adjust: exact;
+  }
+  
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+    color: #1e293b;
+    background: #ffffff;
+    font-size: 11pt;
+    line-height: 1.5;
+    margin: 0;
+    padding: 0;
+  }
+  
+  /* COVER & HEADERS */
+  .header-card {
+    background: linear-gradient(135deg, #0f172a 0%, #1e1b4b 100%);
+    color: #ffffff;
+    padding: 24px 28px;
+    border-radius: 12px;
+    margin-bottom: 24px;
+    box-shadow: 0 4px 12px rgba(15, 23, 42, 0.15);
+  }
+  
+  .badge-p0 {
+    display: inline-block;
+    background: #dc2626;
+    color: white;
+    font-weight: 700;
+    font-size: 9pt;
+    text-transform: uppercase;
+    letter-spacing: 1px;
+    padding: 4px 10px;
+    border-radius: 6px;
+    margin-bottom: 10px;
+  }
+  
+  .header-title {
+    font-size: 20pt;
+    font-weight: 800;
+    margin: 0 0 6px 0;
+    letter-spacing: -0.5px;
+    color: #f8fafc;
+  }
+  
+  .header-subtitle {
+    font-size: 12pt;
+    color: #cbd5e1;
+    margin: 0 0 16px 0;
+    font-weight: 400;
+  }
+  
+  .meta-grid {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 12px;
+    border-top: 1px solid rgba(255, 255, 255, 0.15);
+    padding-top: 12px;
+    font-size: 8.5pt;
+  }
+  
+  .meta-item strong {
+    display: block;
+    color: #94a3b8;
+    text-transform: uppercase;
+    font-size: 7.5pt;
+    letter-spacing: 0.5px;
+  }
+  
+  .meta-item span {
+    color: #f1f5f9;
+    font-weight: 600;
+  }
+
+  /* TYPOGRAPHY */
+  h2 {
+    font-size: 14pt;
+    color: #0f172a;
+    border-bottom: 2px solid #e2e8f0;
+    padding-bottom: 6px;
+    margin-top: 24px;
+    margin-bottom: 14px;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    page-break-after: avoid;
+  }
+  
+  h3 {
+    font-size: 11pt;
+    color: #1e293b;
+    margin-top: 16px;
+    margin-bottom: 6px;
+    font-weight: 700;
+    page-break-after: avoid;
+  }
+
+  p {
+    margin: 0 0 8px 0;
+  }
+
+  ul, ol {
+    margin: 0 0 10px 0;
+    padding-left: 20px;
+  }
+
+  li {
+    margin-bottom: 4px;
+  }
+
+  /* CALLOUTS */
+  .callout {
+    padding: 10px 14px;
+    border-radius: 8px;
+    margin: 10px 0 14px 0;
+    font-size: 10pt;
+    page-break-inside: avoid;
+  }
+  
+  .callout-critical {
+    background: #fef2f2;
+    border-left: 4px solid #ef4444;
+    color: #991b1b;
+  }
+  
+  .callout-warning {
+    background: #fffbeb;
+    border-left: 4px solid #f59e0b;
+    color: #92400e;
+  }
+  
+  .callout-info {
+    background: #eff6ff;
+    border-left: 4px solid #3b82f6;
+    color: #1e40af;
+  }
+
+  .callout-success {
+    background: #f0fdf4;
+    border-left: 4px solid #10b981;
+    color: #065f46;
+  }
+
+  .callout strong {
+    font-weight: 700;
+  }
+
+  /* TABLES */
+  table {
+    width: 100%;
+    border-collapse: collapse;
+    margin: 12px 0 16px 0;
+    font-size: 9pt;
+    page-break-inside: avoid;
+  }
+  
+  th {
+    background: #0f172a;
+    color: #ffffff;
+    font-weight: 600;
+    text-align: left;
+    padding: 8px 10px;
+    font-size: 8.5pt;
+    letter-spacing: 0.3px;
+  }
+  
+  td {
+    padding: 7px 10px;
+    border-bottom: 1px solid #e2e8f0;
+    vertical-align: top;
+  }
+  
+  tr:nth-child(even) td {
+    background: #f8fafc;
+  }
+  
+  /* BADGES */
+  .badge {
+    display: inline-block;
+    padding: 2px 7px;
+    border-radius: 4px;
+    font-size: 8pt;
+    font-weight: 700;
+    white-space: nowrap;
+  }
+  
+  .badge-danger {
+    background: #fee2e2;
+    color: #b91c1c;
+    border: 1px solid #fca5a5;
+  }
+  
+  .badge-warn {
+    background: #fef3c7;
+    color: #b45309;
+    border: 1px solid #fcd34d;
+  }
+  
+  .badge-blue {
+    background: #e0e7ff;
+    color: #3730a3;
+    border: 1px solid #c7d2fe;
+  }
+  
+  .badge-pass {
+    background: #dcfce7;
+    color: #15803d;
+    border: 1px solid #86efac;
+  }
+
+  /* CODE BLOCKS */
+  pre {
+    background: #0f172a;
+    color: #f8fafc;
+    padding: 10px 14px;
+    border-radius: 6px;
+    font-family: "SF Mono", Monaco, Consolas, "Courier New", monospace;
+    font-size: 8.5pt;
+    overflow-x: auto;
+    margin: 8px 0 12px 0;
+    line-height: 1.4;
+    page-break-inside: avoid;
+  }
+  
+  code {
+    font-family: "SF Mono", Monaco, Consolas, "Courier New", monospace;
+    background: #f1f5f9;
+    color: #0f172a;
+    padding: 1px 4px;
+    border-radius: 4px;
+    font-size: 8.5pt;
+  }
+
+  .file-ref {
+    color: #2563eb;
+    font-weight: 600;
+    font-family: monospace;
+    font-size: 8.5pt;
+  }
+
+  /* SECTION CARDS / BOXES */
+  .q-card {
+    background: #ffffff;
+    border: 1px solid #e2e8f0;
+    border-radius: 8px;
+    padding: 10px 14px;
+    margin-bottom: 12px;
+    page-break-inside: avoid;
+  }
+  
+  .q-card.q-defect {
+    border-left: 4px solid #ef4444;
+  }
+
+  .q-card.q-warning {
+    border-left: 4px solid #f59e0b;
+  }
+
+  .q-card.q-ok {
+    border-left: 4px solid #10b981;
+  }
+
+  .q-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: baseline;
+    margin-bottom: 6px;
+  }
+
+  .q-title {
+    font-weight: 700;
+    color: #0f172a;
+    font-size: 10pt;
+  }
+
+  /* PAGE BREAK CONTROLS */
+  .page-break {
+    page-break-before: always;
+  }
+
+  .footer-note {
+    margin-top: 30px;
+    padding-top: 10px;
+    border-top: 1px solid #cbd5e1;
+    font-size: 8pt;
+    color: #64748b;
+    display: flex;
+    justify-content: space-between;
+  }
+
+  /* SVG DIAGRAM STYLING */
+  .diag-container {
+    background: #f8fafc;
+    border: 1px solid #e2e8f0;
+    border-radius: 8px;
+    padding: 14px;
+    margin: 12px 0 16px 0;
+    page-break-inside: avoid;
+    text-align: center;
+  }
+</style>
+</head>
+<body>
+
+  <!-- COVER / HEADER -->
+  <div class="header-card">
+    <div class="badge-p0">RAPPORT D'EXPERTISE TECHNIQUE — PRIORITÉ P0</div>
+    <div class="header-title">Audit Architectural & Diagnostic de Convergence</div>
+    <div class="header-subtitle">Plateforme MÏÏghO Chat V1 — Analyse des Ruptures Temps Réel & Plan de Redressement</div>
+    <div class="meta-grid">
+      <div class="meta-item">
+        <strong>Date d'évaluation</strong>
+        <span>15 Septembre 2026</span>
+      </div>
+      <div class="meta-item">
+        <strong>Statut Global</strong>
+        <span style="color:#f87171;">FAIL / STABILISATION REQUISE</span>
+      </div>
+      <div class="meta-item">
+        <strong>Périmètre</strong>
+        <span>Go Backend + Flutter Client Web/Mobile</span>
+      </div>
+      <div class="meta-item">
+        <strong>Responsable d'Audit</strong>
+        <span>Antigravity Principal Systems Architect</span>
+      </div>
+    </div>
+  </div>
+
+  <!-- EXECUTIVE SUMMARY -->
+  <h2>1. Synthèse Exécutive</h2>
+  <div class="callout callout-critical">
+    <strong>CONSTAT CRITIQUE DU SYSTÈME :</strong> L'audit approfondi du code source révèle que MÏÏghO Chat V1 souffre d'un <strong>défaut de conception structurel majeur</strong> au sein de la gestion d'état Flutter (ChatBloc). Ce problème racine, conjugué à l'absence complète de protocole de réconciliation lors des reconnexions WebSocket et des sorties de veille système (AppLifecycleState.resumed), explique la totalité des anomalies observées (messages qui n'apparaissent qu'au refresh, sidebar désynchronisée, inversion temporelle apparente et listes de contacts obsolètes). Le backend Go est quant à lui intrinsèquement performant (déduplication PostgreSQL robuste, locks applicatifs stricts), mais requiert des ajustements ciblés sur les événements de broadcast et l'exposition d'endpoints de composition.
+  </div>
+
+  <!-- ARCHITECTURE & FLUX -->
+  <h2>2. Section A — Architecture Globale & Flux d'Échange</h2>
+  <p>L'analyse des flux de données met en évidence la scission entre les requêtes HTTP/REST et le bus d'événements bidirectionnel WebSocket :</p>
+
+  <div class="diag-container">
+    <svg viewBox="0 0 760 300" style="max-width:100%; height:auto;" xmlns="http://www.w3.org/2000/svg">
+      <!-- Client Box -->
+      <rect x="10" y="10" width="350" height="280" rx="8" fill="#f1f5f9" stroke="#cbd5e1" stroke-width="1.5" />
+      <text x="25" y="32" font-weight="bold" fill="#0f172a" font-size="12">CLIENT FLUTTER (Web & Mobile)</text>
+      
+      <!-- BLoCs -->
+      <rect x="25" y="45" width="150" height="34" rx="5" fill="#e0e7ff" stroke="#6366f1" />
+      <text x="35" y="66" font-size="10" font-weight="bold" fill="#1e1b4b">ChatBloc (Single State)</text>
+
+      <rect x="190" y="45" width="155" height="34" rx="5" fill="#e0e7ff" stroke="#6366f1" />
+      <text x="200" y="66" font-size="10" font-weight="bold" fill="#1e1b4b">ContactsBloc (Cache RAM)</text>
+
+      <!-- UI Screens -->
+      <rect x="25" y="95" width="320" height="38" rx="5" fill="#ffffff" stroke="#94a3b8" />
+      <text x="35" y="118" font-size="10" fill="#334155">UI: ConversationsScreen | ChatScreen | MasterDetail</text>
+
+      <!-- Client Network -->
+      <rect x="25" y="150" width="150" height="40" rx="5" fill="#fef3c7" stroke="#d97706" />
+      <text x="35" y="174" font-size="10" font-weight="bold" fill="#92400e">WsClient (Singleton)</text>
+
+      <rect x="190" y="150" width="155" height="40" rx="5" fill="#e2e8f0" stroke="#64748b" />
+      <text x="202" y="174" font-size="10" font-weight="bold" fill="#1e293b">ApiClient (Dio/REST)</text>
+
+      <!-- Flaws in client -->
+      <rect x="25" y="210" width="320" height="65" rx="5" fill="#fee2e2" stroke="#ef4444" />
+      <text x="35" y="228" font-size="9" font-weight="bold" fill="#991b1b">FAIBLESSES IDENTIFIÉES CLIENT :</text>
+      <text x="35" y="244" font-size="8.5" fill="#b91c1c">• Mutex : ConversationsLoaded XOR MessagesLoaded</text>
+      <text x="35" y="258" font-size="8.5" fill="#b91c1c">• Zéro synchronisation/rattrapage lors du OnReconnect()</text>
+      <text x="35" y="270" font-size="8.5" fill="#b91c1c">• Double appel WS (ChatBloc constructor + app.dart)</text>
+
+      <!-- Backend Box -->
+      <rect x="400" y="10" width="350" height="280" rx="8" fill="#f8fafc" stroke="#cbd5e1" stroke-width="1.5" />
+      <text x="415" y="32" font-weight="bold" fill="#0f172a" font-size="12">BACKEND GO (Clean Architecture)</text>
+      
+      <!-- WS & REST Handlers -->
+      <rect x="415" y="45" width="155" height="38" rx="5" fill="#fef3c7" stroke="#d97706" />
+      <text x="425" y="68" font-size="10" font-weight="bold" fill="#92400e">Hub WS (Broadcast)</text>
+
+      <rect x="585" y="45" width="150" height="38" rx="5" fill="#e2e8f0" stroke="#64748b" />
+      <text x="595" y="68" font-size="10" font-weight="bold" fill="#1e293b">REST Gin Handlers</text>
+
+      <!-- Services -->
+      <rect x="415" y="100" width="320" height="38" rx="5" fill="#e0e7ff" stroke="#6366f1" />
+      <text x="440" y="123" font-size="10" font-weight="bold" fill="#1e1b4b">ChatService | ContactService (Business Logic)</text>
+
+      <!-- Database -->
+      <rect x="415" y="155" width="320" height="38" rx="5" fill="#dcfce7" stroke="#16a34a" />
+      <text x="445" y="178" font-size="10" font-weight="bold" fill="#14532d">PostgreSQL (Locks applicatifs + Advisory Xact)</text>
+
+      <!-- Flaws in backend -->
+      <rect x="415" y="210" width="320" height="65" rx="5" fill="#fffbeb" stroke="#f59e0b" />
+      <text x="425" y="228" font-size="9" font-weight="bold" fill="#92400e">POINTS D'ATTENTION BACKEND :</text>
+      <text x="425" y="244" font-size="8.5" fill="#b45309">• Absence d'événement WS lors de l'acceptation de contact</text>
+      <text x="425" y="258" font-size="8.5" fill="#b45309">• Manque d'endpoint pour lister les membres d'une conv.</text>
+      <text x="425" y="270" font-size="8.5" fill="#b45309">• Pas d'attribut sequence_number monotone</text>
+
+      <!-- Connectors -->
+      <path d="M 175 170 L 415 64" stroke="#d97706" stroke-width="2" stroke-dasharray="4" fill="none" />
+      <path d="M 345 170 L 585 64" stroke="#64748b" stroke-width="2" fill="none" />
+    </svg>
+  </div>
+
+  <!-- SECTION B: REPONSES AUX 18 QUESTIONS -->
+  <div class="page-break"></div>
+  <h2>3. Section B — Réponses Détaillées aux 18 Questions d'Audit</h2>
+
+  <div class="q-card q-warning">
+    <div class="q-header">
+      <span class="q-title">Q1. Où est détenu l'état des contacts ?</span>
+      <span class="badge badge-warn">Cache RAM non réactif</span>
+    </div>
+    <p><strong>Côté Flutter :</strong> L'état est stocké dans <code>ContactsBloc</code>, appuyé par un cache statique in-memory <code>_cachedContacts</code> au sein de <span class="file-ref">contacts_repository.dart:L13</span>.<br>
+    <strong>Côté Backend :</strong> PostgreSQL (tables <code>contacts</code> et <code>users</code>).<br>
+    <strong>Anomalie :</strong> Le cache RAM ne dispose d'aucun mécanisme d'invalidation temps réel déclenché par WebSocket. Si un pair modifie son statut ou son profil, le client local conserve une donnée obsolète jusqu'au redémarrage complet de l'application.</p>
+  </div>
+
+  <div class="q-card q-warning">
+    <div class="q-header">
+      <span class="q-title">Q2. Où est détenu l'état des demandes de contact ?</span>
+      <span class="badge badge-warn">Désynchronisation inter-écrans</span>
+    </div>
+    <p><strong>Côté Flutter :</strong> <code>ContactsLoaded.incomingRequests</code> et <code>outgoingRequests</code> dans <code>ContactsBloc</code>.<br>
+    <strong>Côté Backend :</strong> Table relationnelle <code>contact_requests</code>.<br>
+    <strong>Anomalie :</strong> L'action <code>AcceptContactRequest</code> déclenche bien un <code>LoadContacts()</code> local (<span class="file-ref">contacts_bloc.dart:L381</span>), mais <strong>les écrans tiers ne sont pas avertis</strong>. L'écran de recherche conserve les <code>searchResults</code> avec le <code>relationshipStatus = pending_sent</code>, affichant à tort le bouton "Demande" au lieu de "Message".</p>
+  </div>
+
+  <div class="q-card q-defect">
+    <div class="q-header">
+      <span class="q-title">Q3. Où est détenu l'état des conversations ?</span>
+      <span class="badge badge-danger">Faille P0 critique</span>
+    </div>
+    <p><strong>Côté Flutter :</strong> Variable d'instance mutable <code>List&lt;MiighoConversation&gt; _allConversations</code> dans <span class="file-ref">chat_bloc.dart:L206</span>.<br>
+    <strong>Côté Backend :</strong> Tables <code>conversations</code> et <code>conversation_members</code>.<br>
+    <strong>Anomalie P0 :</strong> La collection locale <code>_allConversations</code> est modifiée de manière optimiste au fil des réceptions, mais <strong>n'est jamais resynchronisée en masse</strong> après une perte de connexion ou une interruption réseau. L'absence de réconciliation provoque une dérive irréversible de l'état local.</p>
+  </div>
+
+  <div class="q-card q-warning">
+    <div class="q-header">
+      <span class="q-title">Q4. Où est détenue la conversation actuellement ouverte ?</span>
+      <span class="badge badge-warn">Double source de vérité</span>
+    </div>
+    <p><strong>Côté UI :</strong> <code>ChatMasterDetailScreen._activeConversationId</code> (état interne de widget Stateful, <span class="file-ref">chat_master_detail_screen.dart:L19</span>).<br>
+    <strong>Côté BLoC :</strong> <code>ConversationsLoaded.activeConversationId</code> (renseigné lors de <code>CreateConversation</code>).<br>
+    <strong>Anomalie :</strong> Conflit de contrôle entre la couche d'affichage (qui gère son propre identifiant actif) et le BLoC. Un changement d'ID dans l'un ne garantit pas la réactivité de l'autre.</p>
+  </div>
+
+  <div class="q-card q-defect">
+    <div class="q-header">
+      <span class="q-title">Q5. Où est détenu l'état des messages ?</span>
+      <span class="badge badge-danger">Faute de modélisation P0</span>
+    </div>
+    <p><strong>Côté Flutter :</strong> Strictement dans <code>MessagesLoaded.messages</code> du <code>ChatBloc</code>.<br>
+    <strong>Anomalie P0 :</strong> Le BLoC utilise une machine à états mutuellement exclusive. L'état <code>ChatState</code> est <strong>SOIT</strong> <code>ConversationsLoaded</code>, <strong>SOIT</strong> <code>MessagesLoaded</code>. Dès qu'une conversation est consultée, la liste globale des conversations est effacée du state actif. Il est donc structurellement impossible de maintenir la liste et le chat actifs simultanément sans effets de bord.</p>
+  </div>
+
+  <div class="q-card q-defect">
+    <div class="q-header">
+      <span class="q-title">Q6. Où est géré le WebSocket ?</span>
+      <span class="badge badge-danger">Double connexion P0</span>
+    </div>
+    <p><strong>Côté Client :</strong> <code>WsClient</code> (singleton réseau).<br>
+    <strong>Côté Backend :</strong> <code>Hub</code> (<span class="file-ref">hub.go</span>) et <code>ws_handler.go</code>.<br>
+    <strong>Anomalie P0 :</strong> Deux points d'initiation concurrents exécutent <code>connectWebSocket()</code> : le constructeur de <code>ChatBloc</code> (<span class="file-ref">chat_bloc.dart:L228</span>) et l'écouteur d'authentification dans <span class="file-ref">app.dart:L112</span>. Cette redondance génère des flux en doublon et des fermetures/réouvertures intempestives.</p>
+  </div>
+
+  <div class="q-card q-defect">
+    <div class="q-header">
+      <span class="q-title">Q7. Comment les événements WebSocket modifient-ils les états ?</span>
+      <span class="badge badge-danger">Événements silencieux P0</span>
+    </div>
+    <p>La méthode <code>_onWsEnvelopeReceived</code> (<span class="file-ref">chat_bloc.dart:L657-824</span>) intercepte les messages, lectures, accusés et frappes.<br>
+    <strong>Anomalie P0 :</strong> Si l'utilisateur consulte une conversation (état <code>MessagesLoaded</code>), un message arrivant sur une <em>autre</em> conversation met à jour la liste privée <code>_allConversations</code> en mémoire, mais <strong>aucun état n'est émis vers l'UI</strong> pour rafraîchir le badge ou l'aperçu. La liste reste figée jusqu'à une navigation forcée.</p>
+  </div>
+
+  <div class="q-card q-warning">
+    <div class="q-header">
+      <span class="q-title">Q8. Comment les données sont-elles invalidées après mutation ?</span>
+      <span class="badge badge-warn">Cloisonnement BLoC</span>
+    </div>
+    <p>L'invalidation se fait par rechargements ponctuels : <code>SendTextMessage</code> applique un rendu optimiste puis serveur ; <code>AcceptContactRequest</code> recharge les contacts.<br>
+    <strong>Anomalie :</strong> Cloisonnement strict. L'acceptation d'un contact n'avertit pas le <code>ChatBloc</code> (qui pourrait immédiatement instancier une conversation 1-to-1 prête à l'emploi).</p>
+  </div>
+
+  <div class="q-card q-warning">
+    <div class="q-header">
+      <span class="q-title">Q9. Comment les données sont-elles restaurées après navigation ?</span>
+      <span class="badge badge-warn">Remontages coûteux</span>
+    </div>
+    <p>L'UI utilise <code>go_router</code>. <code>ConversationsScreen.initState()</code> appelle <code>LoadConversations()</code> à chaque affichage.<br>
+    <strong>Anomalie :</strong> Sur mobile, le passage de <code>/conversations/:id</code> à <code>/conversations</code> détruit et reconstruit les widgets. Le BLoC repassant de <code>MessagesLoaded</code> à <code>ConversationsLoaded</code>, un temps de latence réseau et un clignotement (flash de chargement) surviennent à chaque retour arrière.</p>
+  </div>
+
+  <div class="q-card q-ok">
+    <div class="q-header">
+      <span class="q-title">Q10. Comment fonctionne la reconnexion WebSocket ?</span>
+      <span class="badge badge-pass">Mécanisme nominal valide</span>
+    </div>
+    <p><code>WsClient._scheduleReconnect()</code> implémente un backoff exponentiel (1s à 10s max) avec vérification de déconnexion explicite et clôture propre du channel. Ce module fonctionne conformément aux spécifications techniques.</p>
+  </div>
+
+  <div class="page-break"></div>
+
+  <div class="q-card q-defect">
+    <div class="q-header">
+      <span class="q-title">Q11. Comment fonctionne la synchronisation après coupure réseau ?</span>
+      <span class="badge badge-danger">GAP MAJEUR P0 (Inexistant)</span>
+    </div>
+    <p><strong>CONSTAT ACCABLANT :</strong> <strong>Il n'existe strictement aucun mécanisme de synchronisation post-déconnexion.</strong><br>
+    Dès lors que le socket se reconnecte, aucun événement <code>sync</code>, aucun paramètre <code>since_timestamp</code> ou <code>last_message_id</code> n'est transmis au backend. Tous les messages, accusés de réception et suppressions survenus pendant l'interruption réseau sont <strong>définitivement perdus pour la session courante</strong> jusqu'à un rechargement manuel de la page (F5 / reload).</p>
+  </div>
+
+  <div class="q-card q-warning">
+    <div class="q-header">
+      <span class="q-title">Q12. Comment l'ordre des messages est-il garanti ?</span>
+      <span class="badge badge-warn">Ordre par timestamp serveur</span>
+    </div>
+    <p><strong>Backend :</strong> Tri PostgreSQL <code>ORDER BY created_at DESC</code>.<br>
+    <strong>Client :</strong> <code>_sortAndDeduplicate</code> applique un tri <code>timestamp.toUtc() DESC</code> puis par <code>id</code> (<span class="file-ref">chat_bloc.dart:L293</span>).<br>
+    <strong>Anomalie :</strong> L'absence de <code>sequence_number</code> monotone par conversation rend le tri vulnérable aux résolutions microsecondes identiques ou aux décalages d'horloges serveurs si l'architecture s'étend au multi-instances.</p>
+  </div>
+
+  <div class="q-card q-ok">
+    <div class="q-header">
+      <span class="q-title">Q13. Comment les doublons de messages sont-ils évités ?</span>
+      <span class="badge badge-pass">Robuste & Conforme</span>
+    </div>
+    <p>Le backend verrouille la paire conversation/message via un advisory lock transactionnel PostgreSQL :<br>
+    <code>pg_advisory_xact_lock(hashtext(conv_id:client_message_id))</code> (<span class="file-ref">repository.go:L370-396</span>).<br>
+    Côté client, <code>_sortAndDeduplicate</code> élimine les doublons sur les deux clés (<code>clientMessageId</code> et <code>id</code>). Ce mécanisme est parfaitement étanche.</p>
+  </div>
+
+  <div class="q-card q-defect">
+    <div class="q-header">
+      <span class="q-title">Q14. Comment les groupes récupèrent-ils leurs membres ?</span>
+      <span class="badge badge-danger">Endpoint absent P1</span>
+    </div>
+    <p>Bien que le repository backend dispose de la méthode interne <code>GetConversationMembers(convID)</code> (<span class="file-ref">repository.go:L48</span>), <strong>aucun endpoint REST public n'est exposé dans l'API</strong>. L'appel <code>GET /chat/conversations/:id</code> omet les détails des membres. Il est donc impossible pour l'écran "Group Info" d'afficher la liste des participants.</p>
+  </div>
+
+  <div class="q-card q-defect">
+    <div class="q-header">
+      <span class="q-title">Q15. Comment l'acceptation d'un contact se propage-t-elle ?</span>
+      <span class="badge badge-danger">Événement WS manquant P1</span>
+    </div>
+    <p>La validation en base de données par <code>ContactService.AcceptContactRequest</code> (<span class="file-ref">service.go:L116</span>) n'émet <strong>aucun message WebSocket vers le demandeur</strong>. Le demandeur continue de voir la demande en attente jusqu'à ce qu'il relance manuellement son application.</p>
+  </div>
+
+  <div class="q-card q-defect">
+    <div class="q-header">
+      <span class="q-title">Q16. Comment les conversations récentes sont-elles actualisées ?</span>
+      <span class="badge badge-danger">Incohérence Master-Detail P1</span>
+    </div>
+    <p>Les paquets WS <code>message.sent</code> mettent à jour l'ordre de <code>_allConversations</code> en mémoire, mais <strong>n'émettent pas d'état <code>ConversationsLoaded</code></strong> si une discussion est ouverte. En mode tablette/desktop (écran master-detail), la colonne de gauche reste totalement figée.</p>
+  </div>
+
+  <div class="q-card q-defect">
+    <div class="q-header">
+      <span class="q-title">Q17. Comment fonctionne le cycle de vie applicatif Flutter ?</span>
+      <span class="badge badge-danger">Absence de reprise de données P0</span>
+    </div>
+    <p><code>MiighoApp</code> implémente <code>WidgetsBindingObserver</code> (<span class="file-ref">app.dart:L125</span>). Lors du retour au premier plan (<code>AppLifecycleState.resumed</code>), le client teste la connexion WebSocket et la rétablit, mais <strong>ne déclenche aucun rechargement des conversations ni des messages</strong>. Les messages reçus en arrière-plan sont ignorés.</p>
+  </div>
+
+  <div class="q-card q-defect">
+    <div class="q-header">
+      <span class="q-title">Q18. Quelles sont les conditions précises provoquant un état obsolète ?</span>
+      <span class="badge badge-danger">Synthèse des Dérives</span>
+    </div>
+    <p>Six scénarios de dérive certains ont été identifiés dans le code :
+      <ol style="margin:4px 0 0 0; padding-left:18px;">
+        <li><strong>Veille mobile / Passage arrière-plan :</strong> Les paquets WS sont coupés par l'OS. Au réveil, aucun rattrapage n'a lieu.</li>
+        <li><strong>Reconnexion réseau (tunnel/métro/Wi-Fi) :</strong> Le socket se reconnecte en silence sans synchroniser l'écart de messages.</li>
+        <li><strong>Consultation active (Desktop & Mobile) :</strong> Le BLoC étant bloqué sur <code>MessagesLoaded</code>, la liste globale ne reçoit plus les événements WS.</li>
+        <li><strong>Acceptation de contact :</strong> Pas de diffusion WebSocket par le backend Go.</li>
+        <li><strong>Navigation retour :</strong> Déchargement de l'état messages provoquant un flash vide puis reload réseau non dédoublé.</li>
+        <li><strong>Consultation d'un groupe :</strong> Absence d'endpoint pour charger les identités des membres.</li>
+      </ol>
+    </p>
+  </div>
+
+  <!-- SECTION C: TABLEAU DE CLASSIFICATION -->
+  <div class="page-break"></div>
+  <h2>4. Section C — Matrice de Classification des Problèmes</h2>
+
+  <p>Les anomalies sont classées selon la norme de criticité opérationnelle :</p>
+
+  <h3>🔴 Anomalies P0 — Bloquantes pour la Fiabilité & la Convergence</h3>
+  <table>
+    <thead>
+      <tr>
+        <th style="width:10%;">ID</th>
+        <th style="width:25%;">Symptôme Constaté</th>
+        <th style="width:30%;">Cause Racine Identifiée</th>
+        <th style="width:20%;">Fichier Source</th>
+        <th style="width:15%;">Gravité</th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td><strong>P0-1</strong></td>
+        <td>Messages non instantanés, sidebar figée, refresh requis</td>
+        <td><code>ChatBloc</code> sous architecture <em>Single State</em> mutuellement exclusive (<code>ConversationsLoaded</code> vs <code>MessagesLoaded</code>).</td>
+        <td><span class="file-ref">chat_bloc.dart</span><br>L670-689</td>
+        <td><span class="badge badge-danger">CRITIQUE</span></td>
+      </tr>
+      <tr>
+        <td><strong>P0-2</strong></td>
+        <td>Perte définitive des messages reçus pendant une coupure</td>
+        <td>Absence de tout protocole de rattrapage / réconciliation lors de l'événement de reconnexion WS.</td>
+        <td><span class="file-ref">ws_client.dart</span><br>L96-109</td>
+        <td><span class="badge badge-danger">CRITIQUE</span></td>
+      </tr>
+      <tr>
+        <td><strong>P0-3</strong></td>
+        <td>État figé au retour de veille smartphone (iOS/Android)</td>
+        <td><code>didChangeAppLifecycleState(resumed)</code> reconnecte le socket mais ne sollicite aucune synchronisation de données.</td>
+        <td><span class="file-ref">app.dart</span><br>L125-131</td>
+        <td><span class="badge badge-danger">CRITIQUE</span></td>
+      </tr>
+      <tr>
+        <td><strong>P0-4</strong></td>
+        <td>Événements WebSocket dupliqués et conflits de socket</td>
+        <td>Double connexion concurrente déclenchée dans le constructeur de <code>ChatBloc</code> ET dans <code>app.dart</code>.</td>
+        <td><span class="file-ref">chat_bloc.dart:L228</span><br><span class="file-ref">app.dart:L112</span></td>
+        <td><span class="badge badge-danger">CRITIQUE</span></td>
+      </tr>
+    </tbody>
+  </table>
+
+  <h3>🟡 Anomalies P1 — Défaillances Fonctionnelles Majeures</h3>
+  <table>
+    <thead>
+      <tr>
+        <th style="width:10%;">ID</th>
+        <th style="width:25%;">Symptôme Constaté</th>
+        <th style="width:30%;">Cause Racine Identifiée</th>
+        <th style="width:20%;">Fichier Source</th>
+        <th style="width:15%;">Gravité</th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td><strong>P1-1</strong></td>
+        <td>Bouton "Demande" persiste après acceptation d'un contact</td>
+        <td>Le cache <code>searchResults</code> du <code>ContactsBloc</code> n'est pas réévalué lors du rechargement des contacts.</td>
+        <td><span class="file-ref">contacts_bloc.dart</span><br>L379-382</td>
+        <td><span class="badge badge-warn">MAJEUR</span></td>
+      </tr>
+      <tr>
+        <td><strong>P1-2</strong></td>
+        <td>Le demandeur ne voit pas l'acceptation de contact en direct</td>
+        <td><code>ContactService</code> backend ne propage aucun broadcast WebSocket lors des mutations de relation.</td>
+        <td><span class="file-ref">contact/service.go</span><br>L116-118</td>
+        <td><span class="badge badge-warn">MAJEUR</span></td>
+      </tr>
+      <tr>
+        <td><strong>P1-3</strong></td>
+        <td>Page "Group Info" vide / membres non listés</td>
+        <td>Aucun endpoint REST d'exposition des membres de conversation avec leur profil utilisateur.</td>
+        <td><span class="file-ref">chat/handler.go</span><br>L40-60</td>
+        <td><span class="badge badge-warn">MAJEUR</span></td>
+      </tr>
+      <tr>
+        <td><strong>P1-4</strong></td>
+        <td>Flash blanc / noms de contacts temporairement absents</td>
+        <td>Émission systématique de <code>ChatLoading</code> et écrasement de la collection globale lors de la navigation.</td>
+        <td><span class="file-ref">chat_bloc.dart</span><br>L302-313</td>
+        <td><span class="badge badge-warn">MAJEUR</span></td>
+      </tr>
+      <tr>
+        <td><strong>P1-5</strong></td>
+        <td>Sidebar non réactive en affichage Master-Detail Desktop</td>
+        <td>Incapacité du BLoC à diffuser simultanément les changements de la liste et du fil actif.</td>
+        <td><span class="file-ref">chat_master_detail_screen.dart</span></td>
+        <td><span class="badge badge-warn">MAJEUR</span></td>
+      </tr>
+    </tbody>
+  </table>
+
+  <!-- SECTION D: PLAN DE REDRESSEMENT -->
+  <div class="page-break"></div>
+  <h2>5. Section D — Plan de Redressement Technique</h2>
+
+  <h3>1. Refondation Fondamentale : Le ChatState Composite (P0-1, P1-4, P1-5)</h3>
+  <p>L'état unique exclusif est abrogé au profit d'un état composite conservant en permanence les deux dimensions :</p>
+  <pre><code>class ChatState extends Equatable {
+  final List&lt;MiighoConversation&gt; conversations;       // Liste globale toujours disponible
+  final String? activeConversationId;                 // ID du fil en cours de lecture
+  final List&lt;MiighoMessageItem&gt; messages;             // Messages du fil actif
+  final MiighoConversation? activeConversation;       // Métadonnées du fil actif
+  final bool isLoadingConversations;                 // Chargement non-bloquant liste
+  final bool isLoadingMessages;                      // Chargement non-bloquant messages
+  final bool isPeerTyping;                           // Indicateur de frappe
+  final String? peerTypingName;                      // Identité de l'interlocuteur
+  final String? error;                               // Erreur contextualisée
+}</code></pre>
+  <div class="callout callout-success">
+    <strong>Bénéfice :</strong> L'arrivée d'un message met à jour à la fois l'aperçu/badge dans la liste des conversations ET le fil actif si l'ID concorde. La vue desktop Master-Detail fonctionne instantanément de manière unifiée sans désynchronisation.
+  </div>
+
+  <h3>2. Protocole de Convergence & Réconciliation (P0-2, P0-3)</h3>
+  <ul>
+    <li><strong>Lors d'un événement OnWsConnected / OnWsReconnected :</strong> Déclencher immédiatement un rechargement transparent <code>LoadConversations(isBackground: true)</code> et, si une conversation est ouverte, <code>LoadMessages(activeConversationId, isBackground: true)</code>.</li>
+    <li><strong>Sur sortie de veille (<code>AppLifecycleState.resumed</code>) :</strong> Invoquer le contrôle d'intégrité de la liaison WebSocket et forcer l'événement de synchronisation globale.</li>
+  </ul>
+
+  <h3>3. Assainissement du Bus WebSocket (P0-4)</h3>
+  <p>Suppression pure et simple de l'appel d'ouverture réseau au sein du constructeur de <code>ChatBloc</code>. Seul l'écouteur d'authentification centralisé de <code>app.dart</code> détient l'autorité d'ouverture et de fermeture du tunnel chiffré.</p>
+
+  <h3>4. Backend Go : Diffusion des Contacts & Membres de Groupe (P1-2, P1-3)</h3>
+  <ul>
+    <li>Injection du <code>Hub</code> WebSocket dans <code>ContactService</code> pour émettre l'événement <code>contact.accepted</code> aux deux pairs connectés.</li>
+    <li>Ajout de la route <code>GET /chat/conversations/:id/members</code> renvoyant la liste complète des membres avec nom complet, avatar et rôle.</li>
+  </ul>
+
+  <!-- SECTION E: ORDONNANCEMENT -->
+  <h2>6. Section E — Ordonnancement & Matrice de Déploiement</h2>
+  <table>
+    <thead>
+      <tr>
+        <th style="width:12%;">Phase</th>
+        <th style="width:38%;">Chantier Technique</th>
+        <th style="width:15%;">Temps Estimé</th>
+        <th style="width:15%;">Niveau de Risque</th>
+        <th style="width:20%;">Dépendance</th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td><strong>Phase 1</strong></td>
+        <td>Élimination de la double connexion WS (<span class="file-ref">chat_bloc.dart</span>)</td>
+        <td>15 min</td>
+        <td><span class="badge badge-pass">Très faible</span></td>
+        <td>Aucune</td>
+      </tr>
+      <tr>
+        <td><strong>Phase 2</strong></td>
+        <td>Implémentation du <code>ChatState</code> composite & adaptation UI</td>
+        <td>2 h 30</td>
+        <td><span class="badge badge-warn">Moyen (Fondation)</span></td>
+        <td>Phase 1</td>
+      </tr>
+      <tr>
+        <td><strong>Phase 3</strong></td>
+        <td>Synchronisation post-reconnexion WS (<span class="file-ref">ws_client.dart</span>)</td>
+        <td>45 min</td>
+        <td><span class="badge badge-pass">Faible</span></td>
+        <td>Phase 2</td>
+      </tr>
+      <tr>
+        <td><strong>Phase 4</strong></td>
+        <td>Cycle de vie Flutter <code>resumed</code> (<span class="file-ref">app.dart</span>)</td>
+        <td>20 min</td>
+        <td><span class="badge badge-pass">Faible</span></td>
+        <td>Phase 2</td>
+      </tr>
+      <tr>
+        <td><strong>Phase 5</strong></td>
+        <td>Invalidation du cache recherche contacts (<span class="file-ref">contacts_bloc.dart</span>)</td>
+        <td>30 min</td>
+        <td><span class="badge badge-pass">Faible</span></td>
+        <td>Aucune</td>
+      </tr>
+      <tr>
+        <td><strong>Phase 6</strong></td>
+        <td>Backend Go : Broadcast WS des statuts de contact (<span class="file-ref">contact/service.go</span>)</td>
+        <td>1 h 00</td>
+        <td><span class="badge badge-pass">Faible</span></td>
+        <td>Phase 2</td>
+      </tr>
+      <tr>
+        <td><strong>Phase 7</strong></td>
+        <td>Backend Go : Endpoint membres de groupe (<span class="file-ref">chat/handler.go</span>)</td>
+        <td>45 min</td>
+        <td><span class="badge badge-pass">Faible</span></td>
+        <td>Aucune</td>
+      </tr>
+    </tbody>
+  </table>
+
+  <!-- SECTION F: QUESTIONS OUVERTES & VALIDATION -->
+  <div class="page-break"></div>
+  <h2>7. Section F — Arbitrages Décisionnels & Protocole de Validation</h2>
+
+  <div class="callout callout-warning">
+    <strong>DÉCISION REQUISE Q1 — Stratégie d'Architecture BLoC :</strong><br>
+    L'approche préconisée par l'audit est le <strong>ChatState Composite</strong> dans un <code>ChatBloc</code> unifié (plus rapide, préserve l'API du bloc). L'alternative consiste à scinder en deux blocs distincts (<code>ConversationListBloc</code> + <code>ActiveChatBloc</code>). Confirmez-vous le choix de l'état composite ?
+  </div>
+
+  <div class="callout callout-warning">
+    <strong>DÉCISION REQUISE Q2 — Modèle de Rattrapage Post-Coupure :</strong><br>
+    Pour la V1, l'audit propose un <strong>reload transparent en arrière-plan</strong> (Fetch complet idempotent des messages actifs et conversations). Faut-il s'en tenir à ce modèle éprouvé pour V1, ou implémenter dès à présent un curseur incrémental <code>since=&lt;timestamp&gt;</code> côté backend Go ?
+  </div>
+
+  <div class="callout callout-info">
+    <strong>DÉCISION REQUISE Q3 — Sequence Number Monotone :</strong><br>
+    L'ordre temporel actuel s'appuie sur la résolution microseconde de PostgreSQL (<code>ORDER BY created_at DESC</code>). Cela est suffisant en environnement mono-serveur. Souhaitez-vous planifier l'attribut <code>sequence_number</code> incrémental par conversation dès maintenant ou en jalon V2 ?
+  </div>
+
+  <h3>Protocole de Recette & Chaos Engineering</h3>
+  <ul>
+    <li><strong>Suite Automatisée :</strong> <code>go test -race -count=1 ./...</code> | <code>flutter analyze lib/</code> | <code>flutter test</code> | <code>flutter build web --release</code></li>
+    <li><strong>Chaos Network :</strong> Coupure réseau artificielle de 15s pendant l'émission d'un flux de messages continu entre A et B ; vérification de la convergence automatique à la reprise.</li>
+    <li><strong>Cycle de Vie Mobile :</strong> Mise en arrière-plan Safari iOS pendant 60s, émission de 3 messages par l'interlocuteur, retour au premier plan et contrôle de l'apparition immédiate sans refresh.</li>
+    <li><strong>Desktop Master-Detail :</strong> Émission d'un message sur la conversation C pendant que l'utilisateur lit la conversation B ; confirmation que la conversation C remonte en tête de liste avec badge non-lu.</li>
+  </ul>
+
+  <div class="footer-note">
+    <span>Document d'Audit Officiel — Antigravity Engineering</span>
+    <span>Projet Waza / MÏÏghO Chat V1</span>
+    <span>Page générée le 15/09/2026</span>
+  </div>
+
+</body>
+</html>
